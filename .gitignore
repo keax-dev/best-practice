@@ -3,3 +3,7 @@ __pycache__/
 .venv/
 venv/
 programming_fundamentals/data/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/

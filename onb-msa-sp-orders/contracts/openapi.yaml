@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: Pedidos
+  version: 1.0.0
+  description: Contrato definido antes de implementar. Los errores 400 incluyen JSON
+    malformado; 415 indica contenido no soportado.
+servers:
+- url: http://127.0.0.1:5001
+- url: /
+  description: Servidor actual
+paths:
+  /api/v1/orders:
+    post:
+      operationId: createOrder
+      summary: createOrder
+      responses:
+        '201':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example: &id001
+                id: 550e8400-e29b-41d4-a716-446655440000
+                product_id: 1
+                quantity: 2
+                status: CONFIRMADO
+                reason: null
+                created_at: '2026-11-04T12:00:00Z'
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderInput'
+            example:
+              product_id: 1
+              quantity: 2
+    get:
+      operationId: listOrders
+      summary: listOrders
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+              example:
+              - *id001
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+  /api/v1/orders/{order_id}:
+    get:
+      operationId: getOrder
+      summary: getOrder
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example: *id001
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+      parameters:
+      - name: order_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 550e8400-e29b-41d4-a716-446655440000
+  /health:
+    get:
+      operationId: getHealth
+      summary: getHealth
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+                service: onb-msa-sp-orders
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+components:
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      - details
+      properties:
+        code:
+          type: string
+          enum:
+          - INVALID_INPUT
+          - PRODUCT_NOT_FOUND
+          - ORDER_NOT_FOUND
+          - INSUFFICIENT_STOCK
+          - IDEMPOTENCY_CONFLICT
+          - SERVICE_UNAVAILABLE
+          - UPSTREAM_TIMEOUT
+          - INVALID_RESPONSE
+          - INTERNAL_ERROR
+          - UNSUPPORTED_MEDIA_TYPE
+          - NOT_FOUND
+          - METHOD_NOT_ALLOWED
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - service
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+        service:
+          type: string
+    OrderInput:
+      type: object
+      additionalProperties: false
+      required:
+      - product_id
+      - quantity
+      properties:
+        product_id: &id002
+          type: integer
+          minimum: 1
+        quantity: *id002
+    Order:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - product_id
+      - quantity
+      - status
+      - reason
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_id: &id003
+          type: integer
+          minimum: 1
+        quantity: *id003
+        status:
+          type: string
+          enum:
+          - CREADO
+          - CONFIRMADO
+          - RECHAZADO
+          - ERROR_VALIDACION
+        reason:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T.*Z$

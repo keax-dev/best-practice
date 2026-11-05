@@ -1,0 +1,392 @@
+openapi: 3.0.3
+info:
+  title: Inventario
+  version: 1.0.0
+  description: Contrato definido antes de implementar. Los errores 400 incluyen JSON
+    malformado; 415 indica contenido no soportado.
+servers:
+- url: http://127.0.0.1:5002
+- url: /
+  description: Servidor actual
+paths:
+  /api/v1/inventories:
+    get:
+      operationId: listInventories
+      summary: listInventories
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+              example:
+              - &id001
+                id: 1
+                name: Café
+                stock: 10
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+  /api/v1/inventories/{product_id}:
+    get:
+      operationId: getInventory
+      summary: getInventory
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+              example: *id001
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+      parameters:
+      - name: product_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 1
+        example: 1
+  /api/v1/inventories/deductions:
+    post:
+      operationId: deductInventory
+      summary: deductInventory
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deduction'
+              example:
+                order_id: 550e8400-e29b-41d4-a716-446655440000
+                product_id: 1
+                quantity: 2
+                remaining_stock: 8
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+        '409':
+          description: Stock insuficiente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INSUFFICIENT_STOCK
+                message: Stock insuficiente
+                details: {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeductionInput'
+            example:
+              product_id: 1
+              quantity: 2
+              order_id: 550e8400-e29b-41d4-a716-446655440000
+  /health:
+    get:
+      operationId: getHealth
+      summary: getHealth
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+                service: onb-msa-sp-inventories
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+components:
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      - details
+      properties:
+        code:
+          type: string
+          enum:
+          - INVALID_INPUT
+          - PRODUCT_NOT_FOUND
+          - ORDER_NOT_FOUND
+          - INSUFFICIENT_STOCK
+          - IDEMPOTENCY_CONFLICT
+          - SERVICE_UNAVAILABLE
+          - UPSTREAM_TIMEOUT
+          - INVALID_RESPONSE
+          - INTERNAL_ERROR
+          - UNSUPPORTED_MEDIA_TYPE
+          - NOT_FOUND
+          - METHOD_NOT_ALLOWED
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - service
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+        service:
+          type: string
+    Product:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - name
+      - stock
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+        stock:
+          type: integer
+          minimum: 0
+    DeductionInput:
+      type: object
+      additionalProperties: false
+      required:
+      - order_id
+      - product_id
+      - quantity
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        product_id: &id002
+          type: integer
+          minimum: 1
+        quantity: *id002
+    Deduction:
+      type: object
+      additionalProperties: false
+      required:
+      - order_id
+      - product_id
+      - quantity
+      - remaining_stock
+      properties:
+        order_id:
+          type: string
+          format: uuid
+        product_id: &id003
+          type: integer
+          minimum: 1
+        quantity: *id003
+        remaining_stock:
+          type: integer
+          minimum: 0
