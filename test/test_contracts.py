@@ -12,7 +12,12 @@ from openapi_core.contrib.requests import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-FOLDERS = ["api-gateway", "onb-msa-sp-orders", "onb-msa-sp-inventories"]
+FOLDERS = [
+    "api-gateway",
+    "onb-msa-sp-orders",
+    "onb-msa-sp-inventories",
+    "onb-msa-sp-auth",
+]
 
 
 def document(folder: str) -> dict:
@@ -30,17 +35,27 @@ def test_documents_references_requests_and_response_examples(folder):
         for method, operation in methods.items():
             operation_ids.append(operation["operationId"])
             url = spec["servers"][0]["url"] + path
+            headers = {}
             for parameter in operation.get("parameters", []):
                 url = url.replace(
                     "{" + parameter["name"] + "}", str(parameter["example"])
                 )
+                if parameter["in"] == "header":
+                    headers[parameter["name"]] = parameter["example"]
+            if operation.get("security"):
+                if folder == "api-gateway":
+                    headers["Authorization"] = "Bearer example-token"
+                else:
+                    headers["X-Internal-Key"] = "example-internal-key"
             body = (
                 operation.get("requestBody", {})
                 .get("content", {})
                 .get("application/json", {})
                 .get("example")
             )
-            prepared = requests.Request(method.upper(), url, json=body).prepare()
+            prepared = requests.Request(
+                method.upper(), url, json=body, headers=headers
+            ).prepare()
             operation_request = RequestsOpenAPIRequest(prepared)
             contract.validate_request(operation_request)
             for status, response in operation["responses"].items():
@@ -67,6 +82,7 @@ def test_gateway_operations_and_schemas_match_service(folder):
         if path == "/health":
             continue
         for method, operation in methods.items():
+            operation = deepcopy(operation)
             published = deepcopy(gateway["paths"][path][method])
             assert set(published["responses"]) - set(operation["responses"]) == {
                 "502",
@@ -74,4 +90,11 @@ def test_gateway_operations_and_schemas_match_service(folder):
             }
             published["responses"].pop("502")
             published["responses"].pop("504")
+            # Los cuerpos de negocio coinciden; la autenticación del transporte difiere.
+            operation.pop("security", None)
+            published.pop("security", None)
+            operation["parameters"] = [
+                p for p in operation.get("parameters", []) if p["in"] != "header"
+            ]
+            published["parameters"] = published.get("parameters", [])
             assert published == operation

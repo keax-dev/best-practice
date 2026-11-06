@@ -7,9 +7,12 @@ from api.schema.order import DeductionSchema, ErrorSchema
 
 
 class InventoryHTTPClient:
-    def __init__(self, gateway_url: str, timeout: tuple[float, float]) -> None:
+    def __init__(
+        self, gateway_url: str, timeout: tuple[float, float], service_key: str
+    ) -> None:
         self.url = gateway_url.rstrip("/") + "/api/v1/inventories/deductions"
         self.timeout = timeout
+        self.service_key = service_key
 
     def validate(self, order: Order) -> tuple[str, str | None]:
         payload = {
@@ -20,7 +23,11 @@ class InventoryHTTPClient:
         try:
             # Sin reintentos: una respuesta perdida puede ocultar un descuento exitoso.
             response = requests.post(
-                self.url, json=payload, timeout=self.timeout, allow_redirects=False
+                self.url,
+                json=payload,
+                timeout=self.timeout,
+                allow_redirects=False,
+                headers={"X-Orders-Service-Key": self.service_key},
             )
             if response.status_code == 200:
                 data = DeductionSchema().load(response.json())

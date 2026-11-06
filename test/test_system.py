@@ -1,4 +1,4 @@
-# Tema: comprobar tres procesos reales y todo el recorrido HTTP.
+# Tema: comprobar cuatro procesos reales y todo el recorrido HTTP.
 import os
 import socket
 import subprocess
@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.fixture
 def system(tmp_path):
     # No tocar procesos ajenos: la prueba exige que sus puertos estén libres.
-    for port in (5000, 5001, 5002):
+    for port in (5000, 5001, 5002, 5003):
         with socket.socket() as probe:
             try:
                 probe.bind(("127.0.0.1", port))
@@ -27,9 +27,20 @@ def system(tmp_path):
                 pytest.fail(
                     f"Port {port} is busy; stop your local exercise before this test"
                 )
+    key_directory = tmp_path / "keys"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/setup_local.py"),
+            "--directory",
+            str(key_directory),
+        ],
+        check=True,
+    )
     processes = {}
     handles = []
     folders = {
+        "auth": ("onb-msa-sp-auth", 5003),
         "gateway": ("api-gateway", 5000),
         "orders": ("onb-msa-sp-orders", 5001),
         "inventories": ("onb-msa-sp-inventories", 5002),
@@ -43,6 +54,15 @@ def system(tmp_path):
         "ORDERS_TIMEOUT": "10",
         "INVENTORIES_TIMEOUT": "2",
         "VALIDATION_TIMEOUT": "5",
+        "AUTH_SERVICE_URL": "http://127.0.0.1:5003",
+        "AUTH_TIMEOUT": "3",
+        "JWT_PRIVATE_KEY_FILE": str(key_directory / "jwt-private.pem"),
+        "JWT_PUBLIC_KEY_FILE": str(key_directory / "jwt-public.pem"),
+        "INTERNAL_API_KEY": (key_directory / "internal-api.key").read_text(),
+        "ORDERS_SERVICE_KEY": (key_directory / "orders-service.key").read_text(),
+        "JWT_ISSUER": "coe-auth",
+        "JWT_AUDIENCE": "coe-backend",
+        "JWT_ACCESS_TTL": "900",
         "PYTHONIOENCODING": "utf-8",
     }
     try:
@@ -87,8 +107,44 @@ def test_full_http_flow_and_failure_modes(system):
     processes, logs = system
     base = "http://127.0.0.1:5000"
 
-    def create(product_id, quantity):
+    def login(username, password):
         response = requests.post(
+            base + "/api/v1/auth/login",
+            json={"username": username, "password": password},
+            timeout=5,
+        )
+        assert response.status_code == 200
+        session = requests.Session()
+        session.headers["Authorization"] = "Bearer " + response.json()["access_token"]
+        return session
+
+    admin = login("admin", "Admin123!")
+    customer = login("client", "Client123!")
+    assert requests.get(base + "/api/v1/orders", timeout=5).status_code == 401
+    assert (
+        requests.post(
+            base + "/api/v1/auth/login",
+            json={"username": "client", "password": "wrong"},
+            timeout=5,
+        ).status_code
+        == 401
+    )
+    for port, resource in [(5001, "orders"), (5002, "inventories")]:
+        assert (
+            requests.get(
+                f"http://127.0.0.1:{port}/api/v1/{resource}",
+                headers={
+                    "Authorization": admin.headers["Authorization"],
+                    "X-User-Id": "user-admin",
+                    "X-User-Role": "ADMIN",
+                },
+                timeout=5,
+            ).status_code
+            == 401
+        )
+
+    def create(product_id, quantity, actor=admin):
+        response = actor.post(
             base + "/api/v1/orders",
             json={"product_id": product_id, "quantity": quantity},
             timeout=15,
@@ -98,34 +154,71 @@ def test_full_http_flow_and_failure_modes(system):
 
     order = create(1, 2)
     assert order["status"] == "CONFIRMADO"
-    assert requests.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 8
+    assert order["user_id"] == "user-admin"
+    customer_order = create(2, 1, customer)
+    assert customer_order["status"] == "CONFIRMADO"
+    assert customer_order["user_id"] == "user-client"
+    assert customer.get(base + "/api/v1/orders", timeout=5).json() == [customer_order]
     assert (
-        requests.get(base + f"/api/v1/orders/{order['id']}", timeout=5).json() == order
+        customer.get(base + f"/api/v1/orders/{order['id']}", timeout=5).status_code
+        == 404
     )
+    assert (
+        admin.get(
+            base + f"/api/v1/orders/{customer_order['id']}", timeout=5
+        ).status_code
+        == 200
+    )
+    assert customer.get(base + "/api/v1/inventories", timeout=5).status_code == 403
+    assert (
+        customer.post(
+            base + "/api/v1/inventories/deductions", json={}, timeout=5
+        ).status_code
+        == 403
+    )
+    assert (
+        customer.post(
+            base + "/api/v1/orders",
+            json={"product_id": 2, "quantity": 1, "user_id": "user-admin"},
+            timeout=5,
+        ).status_code
+        == 400
+    )
+    forged = customer.get(
+        base + "/api/v1/orders",
+        headers={
+            "X-User-Id": "user-admin",
+            "X-User-Role": "ADMIN",
+            "X-Internal-Key": "fake",
+        },
+        timeout=5,
+    )
+    assert forged.json() == [customer_order]
+    assert len(admin.get(base + "/api/v1/orders", timeout=5).json()) == 2
+    assert admin.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 8
+    assert admin.get(base + f"/api/v1/orders/{order['id']}", timeout=5).json() == order
     assert create(1, 99)["status"] == "RECHAZADO"
     assert create(999, 1)["reason"] == "Producto inexistente"
-    assert requests.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 8
-    before = requests.get(base + "/api/v1/orders", timeout=5).json()
+    assert admin.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 8
+    before = admin.get(base + "/api/v1/orders", timeout=5).json()
     assert (
-        requests.post(
+        admin.post(
             base + "/api/v1/orders", json={"product_id": 1, "quantity": True}, timeout=5
         ).status_code
         == 400
     )
-    assert requests.get(base + "/api/v1/orders", timeout=5).json() == before
-    assert (
-        requests.get(base + f"/api/v1/orders/{uuid4()}", timeout=5).status_code == 404
-    )
+    assert admin.get(base + "/api/v1/orders", timeout=5).json() == before
+    assert admin.get(base + f"/api/v1/orders/{uuid4()}", timeout=5).status_code == 404
 
     # Repetir el descuento de un pedido confirmado no vuelve a consumir stock.
     deduction = {"order_id": order["id"], "product_id": 1, "quantity": 2}
     assert (
-        requests.post(
+        admin.post(
             base + "/api/v1/inventories/deductions", json=deduction, timeout=5
         ).json()["remaining_stock"]
         == 8
     )
-    conflict = requests.post(
+    conflict = admin.post(
         base + "/api/v1/inventories/deductions",
         json={**deduction, "quantity": 3},
         timeout=5,
@@ -137,16 +230,14 @@ def test_full_http_flow_and_failure_modes(system):
         orders = list(pool.map(lambda _: create(1, 1), range(12)))
     assert sum(item["status"] == "CONFIRMADO" for item in orders) == 8
     assert sum(item["status"] == "RECHAZADO" for item in orders) == 4
-    assert requests.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 0
+    assert admin.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 0
     gateway_log = (logs / "gateway.log").read_text(encoding="utf-8")
     assert 'POST /api/v1/inventories/deductions HTTP/1.1" 200' in gateway_log
     assert 'POST /api/v1/orders HTTP/1.1" 201' in gateway_log
-    for port in (5000, 5001, 5002):
+    for port in (5000, 5001, 5002, 5003):
+        assert admin.get(f"http://127.0.0.1:{port}/docs", timeout=5).status_code == 200
         assert (
-            requests.get(f"http://127.0.0.1:{port}/docs", timeout=5).status_code == 200
-        )
-        assert (
-            requests.get(f"http://127.0.0.1:{port}/openapi.yaml", timeout=5).status_code
+            admin.get(f"http://127.0.0.1:{port}/openapi.yaml", timeout=5).status_code
             == 200
         )
 
@@ -154,7 +245,7 @@ def test_full_http_flow_and_failure_modes(system):
     processes["inventories"].wait(timeout=10)
     failed = create(2, 1)
     assert failed["status"] == "ERROR_VALIDACION"
-    unavailable = requests.get(base + "/api/v1/inventories", timeout=5)
+    unavailable = admin.get(base + "/api/v1/inventories", timeout=5)
     # Windows puede agotar la conexión antes de informar que el puerto está cerrado.
     assert (unavailable.status_code, unavailable.json()["code"]) in {
         (502, "SERVICE_UNAVAILABLE"),
@@ -185,11 +276,11 @@ def test_full_http_flow_and_failure_modes(system):
         timed_out = create(2, 1)
         assert timed_out["status"] == "ERROR_VALIDACION"
         assert time.monotonic() - started < 10
-        timeout = requests.get(base + "/api/v1/inventories", timeout=5)
+        timeout = admin.get(base + "/api/v1/inventories", timeout=5)
         assert timeout.status_code == 504
         assert timeout.json()["code"] == "UPSTREAM_TIMEOUT"
         assert (
-            requests.get(base + f"/api/v1/orders/{timed_out['id']}", timeout=5).json()
+            admin.get(base + f"/api/v1/orders/{timed_out['id']}", timeout=5).json()
             == timed_out
         )
     finally:

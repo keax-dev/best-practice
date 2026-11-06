@@ -7,3 +7,4 @@ programming_fundamentals/data/
 .ruff_cache/
 .coverage
 htmlcov/
+.secrets/

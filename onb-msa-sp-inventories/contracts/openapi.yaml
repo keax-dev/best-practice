@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Inventario
-  version: 1.0.0
+  version: 2.0.0
   description: Contrato definido antes de implementar. Los errores 400 incluyen JSON
     malformado; 415 indica contenido no soportado.
 servers:
@@ -77,6 +77,46 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
+      security:
+      - InternalKey: []
+      parameters:
+      - name: X-User-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+        example: user-client
+      - name: X-User-Role
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - CLIENT
+          - SERVICE
+        example: CLIENT
   /api/v1/inventories/{product_id}:
     get:
       operationId: getInventory
@@ -139,6 +179,26 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       parameters:
       - name: product_id
         in: path
@@ -147,6 +207,25 @@ paths:
           type: integer
           minimum: 1
         example: 1
+      - name: X-User-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+        example: user-client
+      - name: X-User-Role
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - CLIENT
+          - SERVICE
+        example: CLIENT
+      security:
+      - InternalKey: []
   /api/v1/inventories/deductions:
     post:
       operationId: deductInventory
@@ -223,6 +302,26 @@ paths:
                 code: INSUFFICIENT_STOCK
                 message: Stock insuficiente
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       requestBody:
         required: true
         content:
@@ -233,6 +332,26 @@ paths:
               product_id: 1
               quantity: 2
               order_id: 550e8400-e29b-41d4-a716-446655440000
+      security:
+      - InternalKey: []
+      parameters:
+      - name: X-User-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+        example: user-client
+      - name: X-User-Role
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - CLIENT
+          - SERVICE
+        example: CLIENT
   /health:
     get:
       operationId: getHealth
@@ -297,6 +416,7 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+      security: []
 components:
   schemas:
     Error:
@@ -322,6 +442,11 @@ components:
           - UNSUPPORTED_MEDIA_TYPE
           - NOT_FOUND
           - METHOD_NOT_ALLOWED
+          - AUTH_REQUIRED
+          - INVALID_TOKEN
+          - TOKEN_EXPIRED
+          - INVALID_CREDENTIALS
+          - FORBIDDEN
         message:
           type: string
         details:
@@ -390,3 +515,9 @@ components:
         remaining_stock:
           type: integer
           minimum: 0
+  securitySchemes:
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Key
+      description: Clave interna del gateway. No se usa el JWT en este servicio.

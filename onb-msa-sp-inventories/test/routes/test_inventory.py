@@ -106,7 +106,17 @@ def test_concurrent_same_order_deducts_once(app):
 def test_instances_and_restart_are_independent(client):
     client.post("/api/v1/inventories/deductions", json=payload())
     other = create_app({"TESTING": True}).test_client()
-    assert other.get("/api/v1/inventories/1").json["stock"] == 10
+    assert (
+        other.get(
+            "/api/v1/inventories/1",
+            headers={
+                "X-Internal-Key": client.application.config["INTERNAL_API_KEY"],
+                "X-User-Id": "user-admin",
+                "X-User-Role": "ADMIN",
+            },
+        ).json["stock"]
+        == 10
+    )
 
 
 def test_missing_product_and_invalid_path(client):

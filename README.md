@@ -1,32 +1,123 @@
-# Pedidos, Inventario y API Gateway con Flask
+# Microservicios Flask: Autenticación, Pedidos, Inventario y API Gateway
 
-Ejercicio educativo de componentes backend con **OpenAPI 3.0.3 y contract-first**.
-Probado con **Python 3.14.7**. Rama: `types_backend_components`.
+Práctica de componentes backend con **Python 3.14.7**, Flask, Marshmallow y
+contratos **OpenAPI 3.0.3 definidos antes del código (contract-first)**.
+Rama: `types_backend_components`.
 
-## Guía paso a paso: desde cero hasta el primer pedido
+## Cómo usar esta guía
 
-Sigue estos pasos en orden. Los comandos usan PowerShell y no necesitan activar
-el entorno virtual. No necesitas PostgreSQL, un gestor de base de datos, Docker
-ni ejecutar migraciones.
+Si es la primera vez, sigue los pasos 1 a 8 en orden. Si ya instalaste todo,
+puedes ir directamente al [arranque de las cuatro aplicaciones](#paso-6-levantar-las-cuatro-aplicaciones)
+y después al [login](#paso-7-comprobar-salud-e-iniciar-sesión).
+Para verificar el proyecto usa la sección de [pruebas](#paso-5-ejecutar-las-pruebas).
 
-### 1. Comprobar los requisitos
+| Necesitas… | Consulta |
+|---|---|
+| Entender el recorrido y los roles | [Arquitectura](#objetivo-y-recorrido) e [identidad](#identidad-roles-y-confianza-entre-aplicaciones) |
+| Preparar una máquina nueva | [Requisitos](#paso-1-comprobar-requisitos-y-obtener-el-código), [dependencias](#paso-2-crear-el-entorno-e-instalar-las-cuatro-aplicaciones) y [claves](#paso-3-generar-las-claves-locales) |
+| Cambiar URLs, claves o timeouts | [Configuración](#paso-4-configuración-opcional-con-env) |
+| Probar permisos con admin y cliente | [Ejemplos de pedidos](#paso-8-crear-y-consultar-pedidos-con-ambos-roles) |
+| Abrir Swagger y los contratos | [Documentación de las APIs](#contratos-y-swagger-ui) |
+| Resolver un fallo de arranque o autenticación | [Solución de problemas](#solución-de-problemas) |
 
-Necesitas Windows con PowerShell, Git y Python 3.14.7. Para instalar las
-dependencias por primera vez necesitas conexión a Internet.
+La API que consume el usuario es el **gateway en el puerto 5000**. No necesitas
+enviar `X-User-Id`, `X-User-Role` ni claves internas desde PowerShell o Swagger:
+el gateway establece esos encabezados después de autenticarte.
+
+## Objetivo y recorrido
+
+Iniciar sesión, crear pedidos en memoria y descontar existencias. El gateway
+centraliza la validación JWT y los permisos de rutas; cada servicio conserva
+su responsabilidad de negocio y su propia memoria.
+
+```text
+LOGIN
+Usuario → Gateway :5000 → Autenticación :5003 → JWT firmado con RS256
+
+CREACIÓN DE PEDIDO
+Usuario con JWT → Gateway → Pedidos :5001
+                  │          │ guarda user_id y estado CREADO
+                  │          │ llama por HTTP con credencial exclusiva de Pedidos
+                  ◄──────────┘
+                  │
+                  └──────→ Inventario :5002 → descuento atómico e idempotente
+                  ◄───────┘
+                  └──────→ Pedidos actualiza estado → Gateway → Usuario
+```
+
+El recorrido de negocio sigue siendo **Cliente → Gateway → Pedidos → Gateway →
+Inventario**. El cliente puede crear pedidos sin tener permiso para consumir
+Inventario directamente.
+
+| Aplicación | Puerto | Responsabilidad |
+|---|---|---|
+| `api-gateway` | 5000 | Validar JWT, autorizar rutas y reenviar HTTP |
+| `onb-msa-sp-orders` | 5001 | Guardar pedidos, controlar propiedad y coordinar descuentos |
+| `onb-msa-sp-inventories` | 5002 | Consultar productos y descontar stock con un lock |
+| `onb-msa-sp-auth` | 5003 | Validar contraseñas de dos usuarios y emitir JWT |
+
+## Identidad, roles y confianza entre aplicaciones
+
+Los únicos usuarios están definidos en `onb-msa-sp-auth/api/seed.py`. Sus
+contraseñas se almacenan en código como hashes de Werkzeug.
+
+| Usuario | Contraseña de demostración | `sub` / `user_id` | Rol |
+|---|---|---|---|
+| `admin` | `Admin123!` | `user-admin` | `ADMIN` |
+| `client` | `Client123!` | `user-client` | `CLIENT` |
+
+Estas cuentas son exclusivamente para el ejercicio local.
+
+| Operación | ADMIN | CLIENT |
+|---|---|---|
+| Crear un pedido | Sí, con su propio `user_id` | Sí, con su propio `user_id` |
+| Listar pedidos | Todos | Solo los propios |
+| Consultar un pedido | Cualquiera | Solo si es suyo; otro devuelve 404 |
+| Consultar Inventario | Sí | No, devuelve 403 |
+| Solicitar descuentos directamente | Sí | No, devuelve 403 |
+
+El cuerpo de creación solo acepta `product_id` y `quantity`. **No acepta
+`user_id`, `client_id` ni `customer_id`**: el propietario sale del `sub` del JWT
+validado y no se puede elegir desde el cuerpo ni mediante parámetros de consulta.
+
+La autenticación se distribuye así:
+
+1. Autenticación firma JWT con su clave privada RSA. El token incluye `sub`,
+   `role`, `iat`, `exp`, `iss` y `aud`; no incluye la contraseña.
+2. El gateway verifica localmente firma RS256, claims obligatorios, vencimiento,
+   emisor, audiencia y formato de identidad. No consulta el login en cada solicitud.
+3. El gateway elimina `Authorization` y los encabezados internos recibidos del
+   usuario; establece `X-User-Id` y `X-User-Role` a partir de la identidad verificada,
+   y añade `X-Internal-Key` al reenviar a Pedidos o Inventario.
+4. Los servicios **no validan JWT**. Comprueban la clave interna del gateway y la
+   identidad recibida. Pedidos además comprueba la propiedad del pedido. Entrar
+   directamente en los puertos 5001/5002 con un JWT o una identidad inventada no basta.
+5. Para descontar, Pedidos llama al gateway con `X-Orders-Service-Key`, una
+   credencial diferente de la clave anterior. Solo permite
+   `POST /api/v1/inventories/deductions`. El gateway reenvía esa operación con
+   identidad `orders-service` y rol `SERVICE`. Ese rol no puede listar inventario
+   ni operar con pedidos. No se usa el JWT del cliente para esta llamada interna.
+
+La clave pública verifica firmas pero no permite emitir JWT. La clave privada
+solo la carga Autenticación; Pedidos e Inventario no necesitan claves JWT.
+Los encabezados internos solo son confiables acompañados de la clave interna.
+Si alguien obtiene esa clave podría suplantar identidad interna: no debe publicarse.
+
+## Paso 1. Comprobar requisitos y obtener el código
+
+Necesitas Windows con PowerShell, Git y Python 3.14.7. Para instalar dependencias
+necesitas Internet. No se necesita base de datos, Docker, Redis ni migraciones.
 
 ```powershell
 git --version
 py -3.14 --version
 ```
 
-El segundo comando debe mostrar `Python 3.14.7` para reproducir exactamente el
-entorno verificado. Si `py` no existe, instala Python con su lanzador para Windows
-y abre una terminal nueva. No copies una carpeta `.venv` de otra computadora:
-créala en esa máquina usando su instalación de Python.
+El segundo comando debe mostrar `Python 3.14.7` para reproducir el entorno
+verificado. Si `py` no se reconoce, instala Python con su lanzador para Windows
+y abre otra terminal. No copies `.venv` de otra computadora: créala en la nueva.
 
-### 2. Obtener el código y seleccionar la rama
-
-En una computadora donde todavía no tengas el repositorio:
+Si todavía no tienes el repositorio:
 
 ```powershell
 cd "$env:USERPROFILE\Documents"
@@ -34,7 +125,7 @@ git clone --branch types_backend_components https://github.com/keax-dev/coe-ing.
 cd .\coe-ing
 ```
 
-Si ya tienes este repositorio, entra en él y comprueba primero sus cambios:
+Si ya lo tienes, comprueba tus cambios antes de actualizar:
 
 ```powershell
 cd C:\Users\jimen\Documents\coe-ing
@@ -43,522 +134,540 @@ git switch types_backend_components
 git pull --ff-only origin types_backend_components
 ```
 
-Si Git indica que hay cambios locales que impiden cambiar de rama o actualizar,
-consérvalos y resuelve esa situación antes de continuar; no uses comandos de
-descarte. En otra computadora sustituye la ruta por la de tu copia del repositorio.
-Los siguientes comandos se ejecutan desde la carpeta raíz `coe-ing`.
+Si Git indica que tus cambios impiden continuar, consérvalos y resuelve el problema
+sin descartarlos. En otra computadora cambia la ruta por la de tu repositorio.
+Los siguientes pasos parten de la raíz `coe-ing`.
 
-### 3. Crear el entorno e instalar todas las dependencias
+## Paso 2. Crear el entorno e instalar las cuatro aplicaciones
 
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe --version
-.\.venv\Scripts\python.exe -m pip install -r .\api-gateway\requirements.txt -r .\onb-msa-sp-orders\requirements.txt -r .\onb-msa-sp-inventories\requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r .\api-gateway\requirements.txt -r .\onb-msa-sp-orders\requirements.txt -r .\onb-msa-sp-inventories\requirements.txt -r .\onb-msa-sp-auth\requirements.txt
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-Si ya tienes `.venv` con Python 3.14.7, omite su creación y ejecuta la instalación
-y la comprobación. El resultado esperado de `pip check` es
-`No broken requirements found.`. `pytest` se instala con esos mismos archivos.
-La instalación se hace una vez; repítela cuando cambien las dependencias.
+Si `.venv` ya usa Python 3.14.7, omite su creación. `pip check` debe mostrar
+`No broken requirements found.`. No hace falta activar el entorno ni cambiar la
+política de ejecución de PowerShell. Las dependencias directas tienen versiones
+fijadas; `pytest` se instala con esos archivos. Repite la instalación cuando cambien.
 
-### 4. Preparar la configuración local
+Compartir el entorno virtual facilita la práctica; las aplicaciones siguen siendo
+procesos independientes. También pueden usar entornos separados instalando el
+`requirements.txt` correspondiente en cada uno. El script de preparación de claves
+requiere `cryptography`, incluido en las dependencias de Autenticación y Gateway.
 
-Los valores predeterminados permiten ejecutar todo sin configurar nada. Si quieres
-tener archivos editables, créalos solamente cuando no existan:
-
-```powershell
-if (-not (Test-Path .\api-gateway\.env)) {
-    Copy-Item .\api-gateway\.env.example .\api-gateway\.env
-}
-if (-not (Test-Path .\onb-msa-sp-orders\.env)) {
-    Copy-Item .\onb-msa-sp-orders\.env.example .\onb-msa-sp-orders\.env
-}
-```
-
-Inventario no requiere variables de entorno. Los `.env` son locales y están
-excluidos de Git. La tabla de configuración más abajo explica todos los valores.
-
-### 5. Ejecutar la verificación completa antes de arrancar manualmente
-
-Deja libres los puertos 5000, 5001 y 5002 y ejecuta:
+## Paso 3. Generar las claves locales
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\verify.py
+.\.venv\Scripts\python.exe scripts\setup_local.py
 ```
 
-Resultado verificado: **67 pruebas aprobadas** distribuidas en gateway (14),
-pedidos (28), inventario (19) y contratos/recorrido HTTP completo (6).
-La prueba global inicia y detiene sus propios servidores; cuando termina no deja
-las aplicaciones levantadas. Si falla, revisa el mensaje antes de continuar.
-
-### 6. Levantar las tres aplicaciones
-
-Abre **tres terminales de PowerShell distintas**. En cada una entra primero en la
-raíz de tu repositorio. En esta computadora la ruta es
-`C:\Users\jimen\Documents\coe-ing`.
-
-Terminal 1:
-
-```powershell
-cd C:\Users\jimen\Documents\coe-ing
-.\.venv\Scripts\python.exe .\onb-msa-sp-inventories\app.py
-```
-
-Terminal 2:
-
-```powershell
-cd C:\Users\jimen\Documents\coe-ing
-.\.venv\Scripts\python.exe .\onb-msa-sp-orders\app.py
-```
-
-Terminal 3:
-
-```powershell
-cd C:\Users\jimen\Documents\coe-ing
-.\.venv\Scripts\python.exe .\api-gateway\app.py
-```
-
-Mantén esas terminales abiertas. Cada comando ocupa su terminal hasta detenerlo.
-Debes ver `Running on http://127.0.0.1:5002`, `:5001` y `:5000`, respectivamente.
-El aviso de Flask sobre el servidor de desarrollo es normal para esta práctica.
-
-### 7. Comprobar salud, documentación y el recorrido completo
-
-Abre una **cuarta terminal**, que usarás como cliente:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:5000/health
-Invoke-RestMethod http://127.0.0.1:5001/health
-Invoke-RestMethod http://127.0.0.1:5002/health
-
-$baseUrl = "http://127.0.0.1:5000"
-Invoke-RestMethod "$baseUrl/api/v1/inventories"
-$order = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -ContentType "application/json" -Body '{"product_id":1,"quantity":2}'
-$order | Format-List
-Invoke-RestMethod "$baseUrl/api/v1/orders/$($order.id)"
-Invoke-RestMethod "$baseUrl/api/v1/inventories/1"
-```
-
-Cada health debe devolver `status: ok`. Con Inventario recién iniciado, el pedido
-debe quedar `CONFIRMADO`, con `reason` nulo, y el café debe quedar con stock 8.
-La creación devuelve HTTP 201; `Invoke-RestMethod` muestra directamente su cuerpo.
-Si repites la creación generarás otro pedido y consumirás otras dos unidades.
-
-Abre http://127.0.0.1:5000/docs en el navegador para probar las operaciones desde
-Swagger UI. Los enlaces de las tres aplicaciones aparecen en la tabla de documentación.
-Las solicitudes de negocio del cliente deben apuntar al puerto 5000.
-
-### 8. Detener, reiniciar y volver a trabajar otro día
-
-Pulsa `Ctrl+C` en la terminal de cada aplicación; puedes detener primero gateway,
-después pedidos y finalmente inventario. Para reiniciar el ejercicio desde cero,
-detén ambos servicios y vuelve a ejecutar los tres comandos del paso 6.
-
-Reiniciar únicamente Pedidos borra sus pedidos; reiniciar únicamente Inventario
-restablece stock e idempotencia, sin borrar los pedidos que conserva el otro proceso.
-Para un estado inicial coherente, reinicia ambos servicios.
-
-La próxima vez no necesitas volver a crear `.venv`: entra en el repositorio,
-instala dependencias si cambiaron y repite los pasos 6 y 7. Después de suspender
-Windows, comprueba los tres health al reanudar; si cerraste las terminales, vuelve
-a arrancar las aplicaciones. No hay servicios instalados que arranquen automáticamente.
-
-## Solución de problemas al levantar el ejercicio
-
-| Problema | Qué revisar |
-|---|---|
-| `py` no se reconoce | Instala Python con su lanzador y abre una nueva terminal. |
-| No existe `.venv\Scripts\python.exe` | Entra en la raíz y crea el entorno con el paso 3. |
-| `ModuleNotFoundError` | Usa el Python de `.venv` e instala los tres `requirements.txt`. |
-| No se encuentra `app.py` | Usa las rutas completas desde la raíz indicadas en el paso 6. |
-| Puerto ocupado o error de enlace | Detén la instancia anterior con `Ctrl+C`; no ejecutes dos copias de la misma app. |
-| El navegador no conecta | Comprueba la terminal de esa app, su puerto y su `/health`. |
-| Gateway responde 502 o 504 | Comprueba que el servicio destino está levantado y que las URLs y timeouts coinciden. |
-| Pedido queda `ERROR_VALIDACION` | Revisa gateway e inventario y los logs de sus terminales. No implica stock insuficiente. |
-| Swagger UI se ve vacío | Comprueba Internet para cargar los recursos del CDN y abre `/openapi.yaml`. |
-| Las pruebas dicen que un puerto está ocupado | Detén las tres apps manuales antes de ejecutar `scripts/verify.py`. |
-| Ya no quedan las existencias iniciales | Reinicia ambos servicios para comenzar una práctica nueva. |
-
-Para identificar quién escucha en los puertos del ejercicio, sin cerrar procesos:
-
-```powershell
-Get-NetTCPConnection -LocalPort 5000,5001,5002 -State Listen -ErrorAction SilentlyContinue |
-    Select-Object LocalAddress, LocalPort, OwningProcess
-```
-
-Los logs aparecen en las terminales de las aplicaciones. No necesitas abrir una
-base de datos, cargar archivos de datos ni ejecutar comandos adicionales de infraestructura.
-
-## Objetivo y arquitectura
-
-Crear pedidos de un solo producto, almacenarlos en memoria y validar su
-disponibilidad descontando unidades de Inventario. Toda comunicación entre
-aplicaciones usa HTTP, incluyendo la llamada de Pedidos hacia Inventario.
+Crea esta configuración, excluida de Git:
 
 ```text
-Cliente → API Gateway :5000 → Pedidos :5001
-                ↑                 │ guarda CREADO
-                │                 │ solicita descuento HTTP
-                └─────────────────┘
-                │
-                └──────────→ Inventario :5002
-                                  │ valida y descuenta con lock
-                ←─────────────────┘
-                │ devuelve resultado a Pedidos
-                └──→ Pedidos actualiza estado → Gateway → Cliente
+.secrets/
+  jwt-private.pem       # firma: Autenticación
+  jwt-public.pem        # verificación: Gateway
+  internal-api.key      # Gateway → Pedidos/Inventario
+  orders-service.key    # Pedidos → Gateway, solo para descuentos
 ```
 
-Recorrido obligatorio: **Cliente → API Gateway → Pedidos → API Gateway → Inventario**.
+Puedes repetir el comando: conserva los secretos existentes y comprueba que las
+claves pública y privada coincidan. No subas ni compartas `.secrets`. En otra máquina
+ejecuta de nuevo el script para generar sus propias claves. Si faltan, las aplicaciones
+protegidas no arrancarán; no existe una clave insegura predeterminada.
 
-| Aplicación | Responsabilidad | Puerto |
-|---|---|---|
-| `api-gateway` | Validar y reenviar las operaciones permitidas | 5000 |
-| `onb-msa-sp-orders` | Guardar pedidos y coordinar su validación síncrona | 5001 |
-| `onb-msa-sp-inventories` | Mantener productos y descontar stock atómicamente | 5002 |
+Las claves son configuración, no persistencia de pedidos o stock. Si necesitas
+rotarlas, detén las cuatro aplicaciones y conserva o mueve de forma controlada la
+configuración anterior antes de generar otra. Reinicia después todas las apps;
+los JWT firmados con la clave anterior dejarán de ser válidos.
 
-El gateway no guarda datos de negocio. Cada servicio tiene su propia memoria;
-no comparte diccionarios ni importa almacenamiento de otra aplicación.
+## Paso 4. Configuración opcional con `.env`
 
-## Estructura
-
-```text
-api-gateway/
-  contracts/openapi.yaml
-  api/
-    __init__.py                 # create_app()
-    contract.py                 # MethodView + OpenAPI + documentación
-    errors.py
-    routes/proxy.py             # Blueprint, as_view(), add_url_rule()
-    clients/proxy.py             # transporte HTTP con requests
-  test/
-    conftest.py
-    routes/test_proxy.py
-    test_contract.py
-  app.py
-  config.py
-  requirements.txt
-  .env.example
-  .gitignore
-onb-msa-sp-orders/
-  contracts/openapi.yaml
-  api/
-    __init__.py
-    contract.py
-    errors.py
-    models/order.py
-    schema/order.py
-    routes/order.py
-    services/order.py
-    repositories/order.py
-    clients/inventory.py        # solo conoce API_GATEWAY_URL
-  test/
-    conftest.py
-    routes/test_orders.py
-    test_contract.py
-  app.py
-  config.py
-  requirements.txt
-  .env.example
-  .gitignore
-onb-msa-sp-inventories/
-  contracts/openapi.yaml
-  api/
-    __init__.py
-    contract.py
-    errors.py
-    seed.py
-    models/product.py
-    schema/inventory.py
-    routes/inventory.py
-    services/inventory.py
-    repositories/inventory.py
-  test/
-    conftest.py
-    routes/test_inventory.py
-    test_contract.py
-  app.py
-  config.py
-  requirements.txt
-  .env.example
-  .gitignore
-test/
-  test_contracts.py             # validación y compatibilidad de contratos
-  test_system.py                # tres procesos reales y fallos HTTP
-scripts/verify.py               # suites en procesos separados
-README.md
-```
-
-Los paquetes contienen sus `__init__.py`. Las carpetas con guiones son proyectos
-independientes, no paquetes importables. Cada aplicación incluye su pequeña
-integración OpenAPI para poder ejecutarse sola.
-
-## Instalación en PowerShell
-
-Desde la raíz, con Python 3.14 instalado:
+Los valores predeterminados ya funcionan. Para crear archivos editables sin
+sobrescribir los existentes:
 
 ```powershell
-cd C:\Users\jimen\Documents\coe-ing
-py -3.14 -m venv .venv
-.\.venv\Scripts\python.exe --version
-.\.venv\Scripts\python.exe -m pip install -r .\api-gateway\requirements.txt -r .\onb-msa-sp-orders\requirements.txt -r .\onb-msa-sp-inventories\requirements.txt
-.\.venv\Scripts\python.exe -m pip check
+foreach ($application in @('api-gateway', 'onb-msa-sp-orders', 'onb-msa-sp-inventories', 'onb-msa-sp-auth')) {
+    $localConfig = Join-Path $application '.env'
+    if (-not (Test-Path $localConfig)) {
+        Copy-Item (Join-Path $application '.env.example') $localConfig
+    }
+}
 ```
 
-Si `.venv` ya existe y utiliza Python 3.14.7, reutilízalo. No hace falta activar
-el entorno ni cambiar la política de PowerShell. Las dependencias directas tienen
-versiones fijadas. Las aplicaciones pueden compartir el entorno virtual y siguen
-siendo procesos independientes. También puedes instalar cada `requirements.txt`
-en un entorno propio si ejecutas las aplicaciones por separado.
-
-Opcionalmente copia las configuraciones de ejemplo; los valores predeterminados
-ya permiten ejecutar sin `.env`:
-
-```powershell
-Copy-Item .\api-gateway\.env.example .\api-gateway\.env
-Copy-Item .\onb-msa-sp-orders\.env.example .\onb-msa-sp-orders\.env
-```
-
-No sobrescribas un `.env` personalizado. Las variables del entorno tienen prioridad.
-
-## Ejecución en tres terminales
-
-En cada terminal parte desde `C:\Users\jimen\Documents\coe-ing`.
-
-Terminal 1, Inventario:
-
-```powershell
-cd .\onb-msa-sp-inventories
-..\.venv\Scripts\python.exe app.py
-```
-
-Terminal 2, Pedidos:
-
-```powershell
-cd .\onb-msa-sp-orders
-..\.venv\Scripts\python.exe app.py
-```
-
-Terminal 3, Gateway:
-
-```powershell
-cd .\api-gateway
-..\.venv\Scripts\python.exe app.py
-```
-
-Se ejecuta **un proceso por aplicación**, con hilos, sin depurador ni recargador
-automático. El gateway puede atender la llamada de Pedidos mientras espera su
-respuesta original. Detén cada aplicación con `Ctrl+C`. El servidor de desarrollo
-de Flask es únicamente para esta práctica local.
-
-## Configuración y timeouts
+Cada aplicación carga su propio `.env`. Las variables del entorno tienen prioridad.
+Los `.env` no se suben a Git.
 
 | Aplicación | Variable | Valor predeterminado |
 |---|---|---|
 | Gateway | `ORDERS_SERVICE_URL` | `http://127.0.0.1:5001` |
 | Gateway | `INVENTORIES_SERVICE_URL` | `http://127.0.0.1:5002` |
-| Gateway | `CONNECT_TIMEOUT` | `1` |
-| Gateway | `ORDERS_TIMEOUT` | `10` |
-| Gateway | `INVENTORIES_TIMEOUT` | `2` |
+| Gateway | `AUTH_SERVICE_URL` | `http://127.0.0.1:5003` |
+| Gateway | `CONNECT_TIMEOUT` | `1` segundo |
+| Gateway | `ORDERS_TIMEOUT` | `10` segundos |
+| Gateway | `INVENTORIES_TIMEOUT` | `2` segundos |
+| Gateway | `AUTH_TIMEOUT` | `3` segundos |
 | Pedidos | `API_GATEWAY_URL` | `http://127.0.0.1:5000` |
-| Pedidos | `CONNECT_TIMEOUT` | `1` |
-| Pedidos | `VALIDATION_TIMEOUT` | `5` |
+| Pedidos | `CONNECT_TIMEOUT` | `1` segundo |
+| Pedidos | `VALIDATION_TIMEOUT` | `5` segundos |
+| Auth y Gateway | `JWT_ISSUER` | `coe-auth` |
+| Auth y Gateway | `JWT_AUDIENCE` | `coe-backend` |
+| Auth | `JWT_ACCESS_TTL` | `900` segundos (15 minutos) |
 
-Los tiempos están en segundos. `requests` recibe `(conexión, lectura)`; el segundo
-limita la espera sin recibir datos, no constituye un plazo total para cuerpos que
-se reciben lentamente. Inventario no conoce URLs de otros servicios.
+Para cambiar rutas de secretos usa rutas absolutas:
 
-Al personalizarlos conserva margen:
+| Variable opcional | Aplicaciones que la utilizan |
+|---|---|
+| `JWT_PRIVATE_KEY_FILE` | Auth |
+| `JWT_PUBLIC_KEY_FILE` | Gateway |
+| `INTERNAL_API_KEY_FILE` | Gateway, Pedidos, Inventario |
+| `ORDERS_SERVICE_KEY_FILE` | Gateway, Pedidos |
+
+Las rutas predeterminadas apuntan a `.secrets` en la raíz del repositorio,
+independientemente de la terminal desde la que ejecutes `app.py`.
+También se pueden proporcionar `INTERNAL_API_KEY` y `ORDERS_SERVICE_KEY` mediante
+el entorno en lugar de archivos. Deben tener al menos 32 caracteres y coincidir
+entre sus consumidores. El generador crea valores aleatorios más largos.
+
+Los destinos HTTP no admiten rutas, consultas ni credenciales y deben ser distintos.
+Inventario no conoce las URLs de los demás servicios.
+
+`requests` utiliza `(timeout de conexión, timeout de lectura)`; el segundo limita
+la espera sin datos, no el tiempo total de una respuesta que envía datos lentamente.
+Si cambias tiempos, conserva estos márgenes:
 
 ```text
 VALIDATION_TIMEOUT de Pedidos > conexión del gateway + INVENTORIES_TIMEOUT
 ORDERS_TIMEOUT del gateway > conexión de Pedidos + VALIDATION_TIMEOUT + margen
 ```
 
-Los valores iniciales permiten que Pedidos registre y devuelva `ERROR_VALIDACION`
-antes de expirar la llamada original. El gateway comprueba un mínimo de margen
-entre sus propios timeouts al iniciar; debes mantener coherentes las configuraciones
-de ambas aplicaciones. No hay reintentos automáticos ni redirecciones HTTP.
+Así Pedidos puede guardar y responder `ERROR_VALIDACION` antes de vencer la
+solicitud original. El gateway comprueba también un mínimo de margen entre sus
+timeouts al iniciar. No hay reintentos automáticos ni redirecciones HTTP.
 
-Los destinos son orígenes HTTP sin rutas, consultas ni credenciales. El gateway
-mantiene rutas explícitas, no acepta URLs destino desde el cliente y bloquea
-saltos repetidos con `X-Gateway-Route`. Los destinos de ambos servicios deben ser distintos.
+## Paso 5. Ejecutar las pruebas
 
-## Contratos y documentación
+Si levantaste las aplicaciones manualmente, detén las cuatro con `Ctrl+C` en sus
+terminales. Los puertos **5000, 5001, 5002 y 5003 deben estar libres**.
+Desde la raíz ejecuta:
+
+```powershell
+cd C:\Users\jimen\Documents\coe-ing
+.\.venv\Scripts\python.exe .\scripts\verify.py
+```
+
+Ejecuta cinco suites en procesos separados: Auth, Gateway, Pedidos, Inventario y
+pruebas globales. Esto evita mezclar los paquetes `api` de aplicaciones diferentes.
+Las pruebas usan repositorios y credenciales aislados; la prueba global genera
+claves temporales, inicia cuatro procesos reales y los cierra al terminar.
+
+El resultado verificado de la versión actual es **107 pruebas aprobadas**:
+
+| Suite | Pruebas |
+|---|---:|
+| Autenticación | 15 |
+| API Gateway | 28 |
+| Pedidos | 33 |
+| Inventario | 22 |
+| Contratos, preparación de claves y recorrido HTTP completo | 9 |
+| **Total** | **107** |
+
+Verás una sección `Checking ...` por suite y su resumen `passed`. Si una falla,
+el script se detiene y muestra el error; no debes interpretar los resúmenes de las
+suites anteriores como una verificación completa. Las pruebas no modifican tus
+claves de `.secrets`. Al terminar tampoco dejan las aplicaciones disponibles:
+para usarlas manualmente debes arrancarlas con el paso 6.
+
+Para ejecutar una suite individual desde la raíz:
+
+```powershell
+Push-Location .\onb-msa-sp-auth
+..\.venv\Scripts\python.exe -m pytest test -v
+Pop-Location
+```
+
+Cambia la carpeta por `api-gateway`, `onb-msa-sp-orders` o
+`onb-msa-sp-inventories` para probar otra aplicación. Ejecuta cada suite desde su
+carpeta: todas usan un paquete llamado `api` y no se deben mezclar en un único
+proceso de pytest.
+
+Desde la raíz, este comando ejecuta **solo las 9 pruebas globales**, según `pytest.ini`:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest test -v
+```
+
+También necesita los cuatro puertos libres porque incluye el recorrido real.
+Para revisar **solo los contratos**, sin levantar servidores:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest test\test_contracts.py -v
+```
+
+Las pruebas cubren login y hashes, firma y claims JWT, tokens vencidos/alterados,
+roles, suplantación por encabezados, acceso directo a servicios, propiedad de pedidos,
+credencial de servicio limitada, entradas sin efectos, errores HTTP, respuestas
+fuera de contrato, idempotencia, concurrencia, stock no negativo, caída de Inventario
+y timeout real. También verifican rutas y compatibilidad de los cuatro contratos.
+
+## Paso 6. Levantar las cuatro aplicaciones
+
+Abre **cuatro terminales distintas**. Estos comandos parten de la raíz; ajusta la
+ruta si clonaste el repositorio en otro lugar.
+
+Terminal 1, Autenticación:
+
+```powershell
+cd C:\Users\jimen\Documents\coe-ing
+.\.venv\Scripts\python.exe .\onb-msa-sp-auth\app.py
+```
+
+Terminal 2, Inventario:
+
+```powershell
+cd C:\Users\jimen\Documents\coe-ing
+.\.venv\Scripts\python.exe .\onb-msa-sp-inventories\app.py
+```
+
+Terminal 3, Pedidos:
+
+```powershell
+cd C:\Users\jimen\Documents\coe-ing
+.\.venv\Scripts\python.exe .\onb-msa-sp-orders\app.py
+```
+
+Terminal 4, Gateway:
+
+```powershell
+cd C:\Users\jimen\Documents\coe-ing
+.\.venv\Scripts\python.exe .\api-gateway\app.py
+```
+
+Mantén las terminales abiertas. Cada comando ocupa su terminal hasta pulsar `Ctrl+C`.
+Debes ver `Running on http://127.0.0.1:` con su puerto correspondiente.
+El aviso de Flask sobre el servidor de desarrollo es normal: se usa solo para la
+práctica local. Cada app ejecuta **un proceso con hilos, sin debug ni recargador**.
+El gateway puede atender una llamada interna mientras espera la respuesta de Pedidos.
+
+## Paso 7. Comprobar salud e iniciar sesión
+
+Abre una **quinta terminal**:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:5000/health
+Invoke-RestMethod http://127.0.0.1:5001/health
+Invoke-RestMethod http://127.0.0.1:5002/health
+Invoke-RestMethod http://127.0.0.1:5003/health
+
+$baseUrl = 'http://127.0.0.1:5000'
+$clientLogin = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/auth/login" -ContentType 'application/json' -Body '{"username":"client","password":"Client123!"}'
+$clientHeaders = @{ Authorization = "Bearer $($clientLogin.access_token)" }
+
+$adminLogin = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/auth/login" -ContentType 'application/json' -Body '{"username":"admin","password":"Admin123!"}'
+$adminHeaders = @{ Authorization = "Bearer $($adminLogin.access_token)" }
+```
+
+Cada health devuelve `status: ok` y solo comprueba su aplicación local. El login,
+health, `/docs` y `/openapi.yaml` son públicos. Todas las demás operaciones
+requieren autenticación. Cuando expire un JWT repite su login y reconstruye sus
+encabezados. No se realizan peticiones al login automáticamente.
+
+La respuesta de login tiene esta forma; `access_token` contendrá el JWT real:
+
+```json
+{
+  "access_token": "<JWT firmado por Autenticación>",
+  "token_type": "Bearer",
+  "expires_in": 900
+}
+```
+
+En las operaciones protegidas, el encabezado que envías es:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+`$clientHeaders` y `$adminHeaders` ya construyen ese encabezado. Mantén sus valores
+separados para probar los permisos de cada usuario. Si abres otra terminal, vuelve
+a ejecutar el bloque de login para crear esas variables en la nueva sesión.
+
+## Paso 8. Crear y consultar pedidos con ambos roles
+
+```powershell
+# El cliente crea un pedido propio; el user_id no se envía.
+$clientOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":2}'
+$clientOrder | Format-List
+
+# El cliente solo ve sus pedidos.
+Invoke-RestMethod "$baseUrl/api/v1/orders" -Headers $clientHeaders
+Invoke-RestMethod "$baseUrl/api/v1/orders/$($clientOrder.id)" -Headers $clientHeaders
+
+# El administrador crea su propio pedido y puede consultar todos.
+$adminOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $adminHeaders -ContentType 'application/json' -Body '{"product_id":2,"quantity":1}'
+Invoke-RestMethod "$baseUrl/api/v1/orders" -Headers $adminHeaders
+Invoke-RestMethod "$baseUrl/api/v1/orders/$($clientOrder.id)" -Headers $adminHeaders
+Invoke-RestMethod "$baseUrl/api/v1/inventories" -Headers $adminHeaders
+```
+
+Con Inventario recién iniciado, el primer pedido devuelve HTTP 201, queda
+`CONFIRMADO`, tiene `user_id: user-client`, `reason` nulo y deja café con stock 8.
+Repetir la creación genera un UUID nuevo y vuelve a consumir existencias.
+
+La respuesta del primer pedido será similar a esta; el UUID y la fecha se generan
+en cada solicitud:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "user-client",
+  "product_id": 1,
+  "quantity": 2,
+  "status": "CONFIRMADO",
+  "reason": null,
+  "created_at": "2026-11-05T12:00:00.000000Z"
+}
+```
+
+El `user_id` de esa respuesta identifica al propietario. Un JWT del administrador
+produce `user-admin`; uno del cliente produce `user-client`. El rol no cambia el
+propietario al crear: el administrador puede consultar pedidos ajenos, pero este
+ejercicio no ofrece creación de pedidos en nombre de otro usuario.
+
+Los siguientes ejemplos devuelven errores intencionales. PowerShell mostrará un
+error HTTP, ya que `Invoke-RestMethod` no devuelve normalmente los cuerpos de error:
+
+```powershell
+# 403: el cliente no puede consumir Inventario.
+Invoke-RestMethod "$baseUrl/api/v1/inventories" -Headers $clientHeaders
+
+# 404: el cliente no puede consultar un pedido del administrador.
+Invoke-RestMethod "$baseUrl/api/v1/orders/$($adminOrder.id)" -Headers $clientHeaders
+
+# 400: no se puede elegir propietario en el cuerpo ni enviar cantidades inválidas.
+Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":1,"user_id":"user-admin"}'
+Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":0}'
+
+# 401: falta el JWT.
+Invoke-RestMethod "$baseUrl/api/v1/orders"
+```
+
+Casos de negocio que sí crean un pedido (HTTP 201):
+
+```powershell
+# RECHAZADO: stock insuficiente, sin modificar existencias.
+Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":100}'
+
+# RECHAZADO: producto inexistente.
+Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":999,"quantity":1}'
+```
+
+Para un fallo técnico, detén solamente Inventario y crea un pedido válido: recibirás
+201 con `ERROR_VALIDACION` y `No se pudo completar la validación`. Un GET autorizado
+de inventario devolverá 502 por conexión fallida o 504 si la conexión agota el timeout.
+Reiniciar Inventario restablece sus existencias y olvida sus descuentos anteriores.
+
+## Contratos y Swagger UI
 
 | Aplicación | Swagger UI | Contrato | Salud local |
 |---|---|---|---|
 | Gateway | http://127.0.0.1:5000/docs | http://127.0.0.1:5000/openapi.yaml | http://127.0.0.1:5000/health |
 | Pedidos | http://127.0.0.1:5001/docs | http://127.0.0.1:5001/openapi.yaml | http://127.0.0.1:5001/health |
 | Inventario | http://127.0.0.1:5002/docs | http://127.0.0.1:5002/openapi.yaml | http://127.0.0.1:5002/health |
+| Auth | http://127.0.0.1:5003/docs | http://127.0.0.1:5003/openapi.yaml | http://127.0.0.1:5003/health |
 
-Swagger UI descarga sus recursos de un CDN con versión fijada; su interfaz requiere
-Internet en el navegador. Los contratos y APIs funcionan sin esa descarga.
-`/health` informa solo de la aplicación local, sin llamar a otros servicios.
+Para practicar desde Swagger UI:
 
-Los contratos se escribieron y validaron **antes** de implementar las aplicaciones.
-`openapi-core` los carga al iniciar. `ContractView` hereda de `MethodView`, valida la
-solicitud antes de ejecutar la operación y valida su respuesta después. Marshmallow
-transforma UUID y serializa modelos; no genera el contrato.
+1. Abre http://127.0.0.1:5000/docs.
+2. En `POST /api/v1/auth/login`, pulsa **Try it out**, introduce las credenciales
+   de `admin` o `client` y ejecuta la operación.
+3. Copia únicamente el valor de `access_token` de la respuesta.
+4. Pulsa **Authorize**, pega el JWT en **BearerAuth** y confirma. Introduce solo
+   el token: Swagger UI añade el prefijo `Bearer`.
+5. Ejecuta las operaciones protegidas y comprueba los permisos del rol elegido.
+6. Para cambiar de usuario, quita la autorización anterior, realiza el otro login
+   y reemplaza el token en **Authorize**. Al vencer, repite el login.
 
-Los contratos incluyen objetos sin propiedades adicionales, enteros positivos,
-UUID, nulos, estados y fechas UTC terminadas en `Z`. `/docs` y `/openapi.yaml` quedan
-fuera de la validación de negocio. Las pruebas validan ejemplos, rutas/métodos y
-compatibilidad de cuerpos y respuestas entre gateway y servicios.
+No necesitas rellenar `OrdersServiceKey`: es una credencial exclusiva de Pedidos.
+Las interfaces de los servicios documentan encabezados internos para inspeccionar
+el contrato; el cliente utiliza siempre el gateway y no necesita conocer esas claves.
 
-## Probar desde una cuarta terminal
+Swagger UI descarga recursos de un CDN con versión fijada; su interfaz requiere
+Internet. Los contratos y las APIs funcionan sin esa descarga.
 
-Todas las solicitudes de negocio de estos ejemplos apuntan al gateway:
+`openapi-core` carga los contratos al construir cada aplicación. `ContractView`
+hereda de `MethodView`, aplica la autorización y valida solicitudes antes de
+ejecutar efectos de negocio, y valida después las respuestas, incluidos los errores.
+Las vistas se registran con `Blueprint`, `as_view()` y `add_url_rule()`.
+Marshmallow transforma UUID y serializa modelos; no genera los contratos.
 
-```powershell
-$baseUrl = "http://127.0.0.1:5000"
-Invoke-RestMethod "$baseUrl/health"
-Invoke-RestMethod "$baseUrl/api/v1/inventories"
+Los contratos incluyen ejemplos, referencias reutilizables, UUID, fechas UTC,
+nulos, estados, cuerpos cerrados y esquemas de seguridad. Las diferencias entre
+autenticación externa e interna se documentan en sus respectivos contratos; los
+cuerpos y respuestas de negocio deben coincidir. Las pruebas detectan divergencias.
+Los recursos de documentación quedan fuera de la validación de negocio.
 
-# Confirmado: descuenta dos cafés de los diez iniciales.
-$order = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -ContentType "application/json" -Body '{"product_id":1,"quantity":2}'
-$order
-Invoke-RestMethod "$baseUrl/api/v1/orders/$($order.id)"
-Invoke-RestMethod "$baseUrl/api/v1/orders"
-Invoke-RestMethod "$baseUrl/api/v1/inventories/1"
+## Operaciones, estados y errores
 
-# Rechazado por stock insuficiente, sin modificar existencias.
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -ContentType "application/json" -Body '{"product_id":1,"quantity":100}'
+| Ruta | Métodos |
+|---|---|
+| `/api/v1/auth/login` | POST |
+| `/api/v1/orders` | GET, POST |
+| `/api/v1/orders/{order_id}` | GET |
+| `/api/v1/inventories` | GET |
+| `/api/v1/inventories/{product_id}` | GET |
+| `/api/v1/inventories/deductions` | POST |
 
-# Rechazado por producto inexistente.
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -ContentType "application/json" -Body '{"product_id":999,"quantity":1}'
-
-# HTTP 400: no crea un pedido. Invoke-RestMethod mostrará el error HTTP.
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -ContentType "application/json" -Body '{"product_id":1,"quantity":0}'
-```
-
-Para un fallo técnico, detén solamente Inventario y crea un pedido válido.
-Recibirás **201** con `ERROR_VALIDACION` y `No se pudo completar la validación`.
-Un GET de inventario mediante el gateway devolverá 502 por conexión fallida o 504
-si la conexión agota su timeout. Reiniciar Inventario restablece sus existencias.
-
-| Ruta | Métodos | Respuestas principales |
-|---|---|---|
-| `/api/v1/orders` | POST, GET | Crear (201), listar (200) |
-| `/api/v1/orders/{order_id}` | GET | Consultar UUID (200/404) |
-| `/api/v1/inventories` | GET | Listar productos (200) |
-| `/api/v1/inventories/{product_id}` | GET | Consultar producto (200/404) |
-| `/api/v1/inventories/deductions` | POST | Descontar (200), inexistente (404), conflicto (409) |
-
-El gateway publica las mismas operaciones y conserva método, ruta, consultas
-repetidas, cuerpo y respuestas válidas. Elimina encabezados de conexión, `Host` y
-`Content-Length`. Una respuesta fuera de contrato se registra y se convierte en
-500 en un servicio o 502 (`INVALID_RESPONSE`) en el gateway, sin exponer trazas.
-
-### Estados del pedido
-
-| Estado | Significado |
+| Estado del pedido | Significado |
 |---|---|
 | `CREADO` | Guardado y pendiente de validar; transitorio |
 | `CONFIRMADO` | Inventario confirmó el descuento |
 | `RECHAZADO` | Producto inexistente o stock insuficiente |
-| `ERROR_VALIDACION` | Fallo técnico: no se conoce un resultado válido |
+| `ERROR_VALIDACION` | Fallo técnico; no se conoce un resultado válido |
 
-El flujo es **síncrono**: la creación espera el resultado HTTP antes de responder.
-Normalmente el cliente no observa `CREADO`. Un pedido guardado devuelve 201 incluso
-si queda rechazado o con error técnico. Una solicitud inválida devuelve 400 sin
-crear pedido; los booleanos no se aceptan como enteros.
+El flujo es **síncrono**: la creación espera la validación HTTP antes de responder.
+Normalmente el cliente no observa `CREADO`. Un pedido guardado devuelve 201 aunque
+termine rechazado o con error técnico. Entradas inválidas no crean pedidos; los
+booleanos no se aceptan como enteros.
 
-### Idempotencia del descuento
-
-```powershell
-$deduction = @{ order_id = $order.id; product_id = 1; quantity = 2 } | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/inventories/deductions" -ContentType "application/json" -Body $deduction
-```
-
-Si el pedido ya fue confirmado, devuelve su resultado anterior sin descontar otra
-vez. El stock de esa respuesta corresponde al momento del descuento original.
-Reutilizar el UUID con otro producto o cantidad devuelve 409 y `IDEMPOTENCY_CONFLICT`.
-Solo se registran descuentos exitosos.
-
-Inventario comienza con **Café: 10, Té: 5 y Chocolate: 0**. Un solo lock protege la
-comprobación de duplicados, stock, descuento y registro del resultado. Las consultas
-también usan el lock. Los rechazos no modifican existencias.
-
-### Formato de errores
+Todos los errores siguen este formato, sin trazas internas:
 
 ```json
-{
-  "code": "INSUFFICIENT_STOCK",
-  "message": "Stock insuficiente",
-  "details": {"product_id": 1}
-}
+{"code": "INSUFFICIENT_STOCK", "message": "Stock insuficiente", "details": {"product_id": 1}}
 ```
 
-| Situación | HTTP | Código |
-|---|---|---|
-| Entrada inválida o JSON malformado | 400 | `INVALID_INPUT` |
-| POST con contenido distinto de JSON | 415 | `UNSUPPORTED_MEDIA_TYPE` |
-| Producto inexistente | 404 | `PRODUCT_NOT_FOUND` |
-| Pedido inexistente | 404 | `ORDER_NOT_FOUND` |
-| Stock insuficiente | 409 | `INSUFFICIENT_STOCK` |
-| UUID de descuento reutilizado con otros datos | 409 | `IDEMPOTENCY_CONFLICT` |
-| Conexión fallida en gateway | 502 | `SERVICE_UNAVAILABLE` |
-| Respuesta inválida en gateway | 502 | `INVALID_RESPONSE` |
-| Timeout en gateway | 504 | `UPSTREAM_TIMEOUT` |
-| Error interno | 500 | `INTERNAL_ERROR` |
+| HTTP | Códigos principales |
+|---|---|
+| 400 | `INVALID_INPUT`: cuerpo inválido, JSON malformado o parámetros incorrectos |
+| 401 | `AUTH_REQUIRED`, `INVALID_TOKEN`, `TOKEN_EXPIRED`, `INVALID_CREDENTIALS` |
+| 403 | `FORBIDDEN`: autenticado sin permiso o identidad interna no admitida |
+| 404 | `ORDER_NOT_FOUND`, `PRODUCT_NOT_FOUND`, `NOT_FOUND` |
+| 405 | `METHOD_NOT_ALLOWED` |
+| 409 | `INSUFFICIENT_STOCK`, `IDEMPOTENCY_CONFLICT` |
+| 415 | `UNSUPPORTED_MEDIA_TYPE` |
+| 500 | `INTERNAL_ERROR` |
+| 502 | `SERVICE_UNAVAILABLE`, `INVALID_RESPONSE` en gateway |
+| 504 | `UPSTREAM_TIMEOUT` en gateway |
 
-Las rutas desconocidas y métodos no permitidos devuelven 404/405 con el mismo
-formato. Un fallo de comunicación nunca se interpreta como stock insuficiente.
+Las respuestas fuera de contrato se registran en los logs y se convierten en 500
+en un servicio o 502 en gateway. Un fallo de comunicación no significa falta de stock.
+El gateway conserva método, ruta, consultas repetidas, cuerpo y respuestas válidas;
+filtra encabezados de conexión, `Host`, `Content-Length` y credenciales internas.
 
-## Ejecutar las pruebas
+## Memoria, concurrencia e idempotencia
 
-Desde la raíz, **con los puertos 5000, 5001 y 5002 libres**:
+Inventario comienza con **Café: 10, Té: 5 y Chocolate: 0**, definidos en `api/seed.py`.
+Pedidos empieza vacío. Los repositorios se crean una vez por instancia de aplicación.
+
+Un solo lock protege duplicados, comprobación de stock, descuento y registro del
+éxito. No permite stock negativo y los rechazos no modifican existencias.
+Los descuentos exitosos se registran por `order_id`: repetir el mismo UUID y datos
+devuelve el resultado original sin descontar otra vez. Cambiar producto o cantidad
+para ese UUID devuelve 409 `IDEMPOTENCY_CONFLICT`. Solo se guardan éxitos.
+
+Para comprobarlo como administrador con el pedido del paso 8:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\verify.py
+$deduction = @{ order_id = $clientOrder.id; product_id = 1; quantity = 2 } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/inventories/deductions" -Headers $adminHeaders -ContentType 'application/json' -Body $deduction
 ```
 
-El comando ejecuta cuatro suites en procesos separados para evitar mezclar los
-paquetes `api`. La última levanta las tres aplicaciones y comprueba HTTP real,
-concurrencia, caída de Inventario y timeout con un sustituto HTTP lento usado solo
-en la prueba. Cierra únicamente los procesos que ella misma inició.
+El stock devuelto corresponde al descuento original, no a una consulta nueva.
+La idempotencia protege descuentos identificados, no repeticiones del POST de creación.
 
-Un `python -m pytest` desde la raíz ejecuta solo la suite global, según `pytest.ini`.
-Usa `scripts/verify.py` para comprobar también las tres suites individuales.
+## Estructura del código
 
-Para una suite individual desde la raíz:
+```text
+api-gateway/
+  contracts/openapi.yaml
+  api/{clients, routes}/
+  api/{__init__, contract, errors, security}.py
+  test/routes/
+onb-msa-sp-auth/
+  contracts/openapi.yaml
+  api/{models, schema, routes, services, repositories}/
+  api/{__init__, contract, errors, security, seed}.py
+  test/routes/
+onb-msa-sp-orders/
+  contracts/openapi.yaml
+  api/{models, schema, routes, services, repositories, clients}/
+  api/{__init__, contract, errors, security}.py
+  test/routes/
+onb-msa-sp-inventories/
+  contracts/openapi.yaml
+  api/{models, schema, routes, services, repositories}/
+  api/{__init__, contract, errors, security, seed}.py
+  test/routes/
+scripts/{setup_local, verify}.py
+test/{test_contracts, test_setup, test_system}.py
+.secrets/                         # local, generado y excluido de Git
+README.md
+```
+
+La notación entre llaves abrevia nombres separados, no carpetas literales.
+Cada aplicación incluye `app.py`, `config.py`, `requirements.txt`, `.env.example`,
+`.gitignore` y pruebas de correspondencia de rutas. Los paquetes tienen `__init__.py`.
+Las carpetas con guiones son proyectos independientes: no se importan como paquetes
+ni comparten repositorios. La pequeña integración contractual se incluye en cada app.
+
+## Detener, reiniciar y retomar la práctica
+
+Pulsa `Ctrl+C` en las cuatro terminales. Para empezar con datos iniciales coherentes,
+reinicia Pedidos e Inventario; puedes dejar Auth y Gateway levantados si su
+configuración no cambió. Reiniciar solo uno de los servicios reinicia solo su memoria.
+La próxima vez reutiliza `.venv` y `.secrets`, levanta las cuatro apps y haz login.
+Después de suspender Windows comprueba los health; no hay servicios instalados que
+arranquen automáticamente. Las claves se cargan al iniciar, no por cada solicitud.
+
+## Solución de problemas
+
+| Problema | Acción |
+|---|---|
+| No existe `py` | Instala Python con el lanzador y abre una terminal nueva. |
+| No existe `.venv\Scripts\python.exe` | Entra en la raíz y crea el entorno del paso 2. |
+| `ModuleNotFoundError` | Usa el Python de `.venv` e instala los cuatro requirements. |
+| Falta un archivo en `.secrets` | Ejecuta `scripts/setup_local.py` después de instalar dependencias. |
+| 401 en gateway | Inicia sesión, renueva un token vencido y revisa el encabezado Bearer. |
+| 403 con el cliente en Inventario | Es el permiso previsto; crea pedidos para solicitar descuentos indirectamente. |
+| 404 al consultar un pedido ajeno | El cliente solo puede consultar los suyos. |
+| 401 entre servicios | Revisa que coincida la clave interna; reinicia tras cambiar secretos. |
+| `ERROR_VALIDACION` al crear | Revisa Gateway, Inventario, credencial de Pedidos y timeouts. |
+| 502/504 al iniciar sesión | Comprueba Auth en el puerto 5003 y `AUTH_SERVICE_URL`. |
+| Puerto ocupado | Detén la instancia anterior; no ejecutes dos copias de la misma app. |
+| Swagger UI vacío | Comprueba Internet para su CDN y abre el contrato YAML directamente. |
+| Las pruebas detectan puertos ocupados | Detén las cuatro apps manuales antes de la verificación global. |
+
+Para identificar procesos que escuchan, sin cerrarlos:
 
 ```powershell
-Push-Location .\onb-msa-sp-orders
-..\.venv\Scripts\python.exe -m pytest test -v
-Pop-Location
+Get-NetTCPConnection -LocalPort 5000,5001,5002,5003 -State Listen -ErrorAction SilentlyContinue |
+    Select-Object LocalAddress, LocalPort, OwningProcess
 ```
 
-Sustituye la carpeta por `api-gateway` o `onb-msa-sp-inventories` para sus pruebas.
-Solo contratos y ejemplos, sin servidores:
+Los logs aparecen en las terminales de cada aplicación. No hace falta cargar datos
+en una base de datos ni levantar otro componente de infraestructura.
 
-```powershell
-.\.venv\Scripts\python.exe -m pytest test\test_contracts.py -v
-```
+## Limitaciones de la práctica
 
-Las pruebas cubren estados, entradas sin efectos, errores de transporte, destino
-HTTP de Pedidos, idempotencia y stock bajo concurrencia, instancias independientes,
-respuestas inválidas, encabezados, consultas, rutas y compatibilidad de contratos.
+- Al reiniciar se pierden pedidos, stock modificado y descuentos registrados.
+  Varias instancias tendrían memorias y locks distintos: usa un proceso por app.
+- Un timeout o respuesta perdida deja un resultado incierto: Inventario podría
+  haber descontado antes del fallo. No hay compensación ni recuperación automática.
+- Los JWT vencen; no hay refresh tokens, revocación inmediata ni endpoint de logout.
+  El gateway verifica localmente, por lo que un token válido no depende de que Auth
+  siga disponible. El login sí necesita ese servicio.
+- Las cuentas quemadas y el HTTP local con claves internas son una práctica educativa.
+  No expongas estos puertos a Internet. Para un entorno real habría que proteger
+  el transporte, aislar los servicios y administrar usuarios y secretos adecuadamente.
+- No hay base de datos, ORM, Redis, contenedores, mensajería, frontend ni tareas de negocio
+  en segundo plano. Los archivos de claves son configuración, no persistencia de negocio.
 
-## Limitaciones
-
-- Al reiniciar se pierden todos los pedidos, descuentos registrados y cambios de
-  stock. Cada aplicación crea sus repositorios una vez por instancia, no por solicitud.
-- Varias instancias o procesos tendrían memorias y locks diferentes; el stock y
-  la idempotencia no estarían coordinados. Esta práctica requiere un proceso por app.
-- Una respuesta perdida deja un resultado incierto: Inventario podría haber
-  descontado antes de perderse la respuesta. `ERROR_VALIDACION` no revierte el
-  descuento. No hay recuperación, compensación ni conciliación automática.
-- Repetir el POST de creación genera un nuevo UUID y puede descontar otra vez.
-  La idempotencia cubre el descuento por `order_id`, no la creación de pedidos.
-- No se usa base de datos, ORM, Redis, archivos de persistencia, Docker, Kafka,
-  autenticación ni frontend. Los contratos y logs no son almacenamiento de negocio.
-
-## Otro material del repositorio
+## Otro material y referencias
 
 Los fundamentos se conservan en la rama
 [`programming_fundamentals`](https://github.com/keax-dev/coe-ing/tree/programming_fundamentals).
-
-Referencias: [integración Flask de openapi-core](https://python-openapi.org/openapi-core/docs/latest/integrations/flask/)
-y [vistas de clase de Flask](https://flask.palletsprojects.com/en/stable/views/).
+Referencias: [PyJWT](https://pyjwt.readthedocs.io/en/stable/api.html),
+[Werkzeug](https://werkzeug.palletsprojects.com/en/stable/utils/) e
+[integración Flask de openapi-core](https://python-openapi.org/openapi-core/docs/latest/integrations/flask/).

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: API Gateway
-  version: 1.0.0
+  version: 2.0.0
   description: Contrato definido antes de implementar. Los errores 400 incluyen JSON
     malformado; 415 indica contenido no soportado.
 servers:
@@ -27,6 +27,7 @@ paths:
                 status: CONFIRMADO
                 reason: null
                 created_at: '2026-11-04T12:00:00Z'
+                user_id: user-client
         '400':
           description: Solicitud inválida
           content:
@@ -98,6 +99,26 @@ paths:
                 code: UPSTREAM_TIMEOUT
                 message: Tiempo de espera agotado
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       requestBody:
         required: true
         content:
@@ -107,6 +128,8 @@ paths:
             example:
               product_id: 1
               quantity: 2
+      security:
+      - BearerAuth: []
     get:
       operationId: listOrders
       summary: listOrders
@@ -192,6 +215,28 @@ paths:
                 code: UPSTREAM_TIMEOUT
                 message: Tiempo de espera agotado
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
+      security:
+      - BearerAuth: []
   /api/v1/orders/{order_id}:
     get:
       operationId: getOrder
@@ -275,6 +320,26 @@ paths:
                 code: UPSTREAM_TIMEOUT
                 message: Tiempo de espera agotado
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       parameters:
       - name: order_id
         in: path
@@ -283,6 +348,8 @@ paths:
           type: string
           format: uuid
         example: 550e8400-e29b-41d4-a716-446655440000
+      security:
+      - BearerAuth: []
   /api/v1/inventories:
     get:
       operationId: listInventories
@@ -372,6 +439,28 @@ paths:
                 code: UPSTREAM_TIMEOUT
                 message: Tiempo de espera agotado
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
+      security:
+      - BearerAuth: []
   /api/v1/inventories/{product_id}:
     get:
       operationId: getInventory
@@ -455,6 +544,26 @@ paths:
                 code: UPSTREAM_TIMEOUT
                 message: Tiempo de espera agotado
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       parameters:
       - name: product_id
         in: path
@@ -463,6 +572,8 @@ paths:
           type: integer
           minimum: 1
         example: 1
+      security:
+      - BearerAuth: []
   /api/v1/inventories/deductions:
     post:
       operationId: deductInventory
@@ -560,6 +671,26 @@ paths:
                 code: UPSTREAM_TIMEOUT
                 message: Tiempo de espera agotado
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       requestBody:
         required: true
         content:
@@ -570,6 +701,9 @@ paths:
               product_id: 1
               quantity: 2
               order_id: 550e8400-e29b-41d4-a716-446655440000
+      security:
+      - BearerAuth: []
+      - OrdersServiceKey: []
   /health:
     get:
       operationId: getHealth
@@ -634,6 +768,93 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+      security: []
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Iniciar sesión y obtener un JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+            example:
+              username: client
+              password: Client123!
+      responses:
+        '200':
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+              example:
+                access_token: eyJ...example
+                token_type: Bearer
+                expires_in: 900
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '401':
+          description: Usuario o contraseña incorrectos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_CREDENTIALS
+                message: Usuario o contraseña incorrectos
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+        '502':
+          description: Conexión fallida (SERVICE_UNAVAILABLE) o respuesta fuera de
+            contrato (INVALID_RESPONSE)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: SERVICE_UNAVAILABLE
+                message: Servicio no disponible
+                details: {}
+        '504':
+          description: Tiempo de espera agotado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UPSTREAM_TIMEOUT
+                message: Tiempo de espera agotado
+                details: {}
 components:
   schemas:
     Error:
@@ -659,6 +880,11 @@ components:
           - UNSUPPORTED_MEDIA_TYPE
           - NOT_FOUND
           - METHOD_NOT_ALLOWED
+          - AUTH_REQUIRED
+          - INVALID_TOKEN
+          - TOKEN_EXPIRED
+          - INVALID_CREDENTIALS
+          - FORBIDDEN
         message:
           type: string
         details:
@@ -698,6 +924,7 @@ components:
       - status
       - reason
       - created_at
+      - user_id
       properties:
         id:
           type: string
@@ -720,6 +947,11 @@ components:
           type: string
           format: date-time
           pattern: ^\d{4}-\d{2}-\d{2}T.*Z$
+        user_id:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+          description: Propietario obtenido del sub del JWT por el gateway; nunca
+            se acepta en el cuerpo de creación.
     Product:
       type: object
       additionalProperties: false
@@ -770,3 +1002,46 @@ components:
         remaining_stock:
           type: integer
           minimum: 0
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+    Token:
+      type: object
+      additionalProperties: false
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      properties:
+        access_token:
+          type: string
+          minLength: 1
+        token_type:
+          type: string
+          enum:
+          - Bearer
+        expires_in:
+          type: integer
+          minimum: 1
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    OrdersServiceKey:
+      type: apiKey
+      in: header
+      name: X-Orders-Service-Key
+      description: Credencial exclusiva de Pedidos; solo permite POST de descuentos.

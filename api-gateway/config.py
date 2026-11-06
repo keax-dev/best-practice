@@ -34,6 +34,8 @@ def load_config() -> dict:
     load_dotenv(Path(__file__).parent / ".env")
     settings = {"SERVICE_NAME": "api-gateway", "JSON_SORT_KEYS": False}
     settings.update(
+        AUTH_SERVICE_URL=service_url("AUTH_SERVICE_URL", "http://127.0.0.1:5003"),
+        AUTH_TIMEOUT=positive_timeout("AUTH_TIMEOUT", "3"),
         ORDERS_SERVICE_URL=service_url("ORDERS_SERVICE_URL", "http://127.0.0.1:5001"),
         INVENTORIES_SERVICE_URL=service_url(
             "INVENTORIES_SERVICE_URL", "http://127.0.0.1:5002"
@@ -42,7 +44,16 @@ def load_config() -> dict:
         ORDERS_TIMEOUT=positive_timeout("ORDERS_TIMEOUT", "10"),
         INVENTORIES_TIMEOUT=positive_timeout("INVENTORIES_TIMEOUT", "2"),
     )
-    if settings["ORDERS_SERVICE_URL"] == settings["INVENTORIES_SERVICE_URL"]:
+    if (
+        len(
+            {
+                settings["ORDERS_SERVICE_URL"],
+                settings["INVENTORIES_SERVICE_URL"],
+                settings["AUTH_SERVICE_URL"],
+            }
+        )
+        != 3
+    ):
         raise ValueError("Destinations must be different")
     if (
         settings["ORDERS_TIMEOUT"]

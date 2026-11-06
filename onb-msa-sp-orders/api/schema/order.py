@@ -13,6 +13,9 @@ class OrderInputSchema(Schema):
 
 class OrderSchema(OrderInputSchema):
     id = fields.UUID(required=True)
+    user_id = fields.String(
+        required=True, validate=validate.Regexp(r"^[a-zA-Z0-9_-]{1,64}$")
+    )
     status = fields.String(
         required=True,
         validate=validate.OneOf(

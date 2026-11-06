@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Pedidos
-  version: 1.0.0
+  version: 2.0.0
   description: Contrato definido antes de implementar. Los errores 400 incluyen JSON
     malformado; 415 indica contenido no soportado.
 servers:
@@ -27,6 +27,7 @@ paths:
                 status: CONFIRMADO
                 reason: null
                 created_at: '2026-11-04T12:00:00Z'
+                user_id: user-client
         '400':
           description: Solicitud inválida
           content:
@@ -77,6 +78,26 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       requestBody:
         required: true
         content:
@@ -86,6 +107,26 @@ paths:
             example:
               product_id: 1
               quantity: 2
+      security:
+      - InternalKey: []
+      parameters:
+      - name: X-User-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+        example: user-client
+      - name: X-User-Role
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - CLIENT
+          - SERVICE
+        example: CLIENT
     get:
       operationId: listOrders
       summary: listOrders
@@ -150,6 +191,46 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
+      security:
+      - InternalKey: []
+      parameters:
+      - name: X-User-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+        example: user-client
+      - name: X-User-Role
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - CLIENT
+          - SERVICE
+        example: CLIENT
   /api/v1/orders/{order_id}:
     get:
       operationId: getOrder
@@ -212,6 +293,26 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+        '401':
+          description: Autenticación requerida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: AUTH_REQUIRED
+                message: Autenticación requerida
+                details: {}
+        '403':
+          description: No tienes permiso para esta operación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: FORBIDDEN
+                message: No tienes permiso para esta operación
+                details: {}
       parameters:
       - name: order_id
         in: path
@@ -220,6 +321,25 @@ paths:
           type: string
           format: uuid
         example: 550e8400-e29b-41d4-a716-446655440000
+      - name: X-User-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+        example: user-client
+      - name: X-User-Role
+        in: header
+        required: true
+        schema:
+          type: string
+          enum:
+          - ADMIN
+          - CLIENT
+          - SERVICE
+        example: CLIENT
+      security:
+      - InternalKey: []
   /health:
     get:
       operationId: getHealth
@@ -284,6 +404,7 @@ paths:
                 code: INTERNAL_ERROR
                 message: Error interno
                 details: {}
+      security: []
 components:
   schemas:
     Error:
@@ -309,6 +430,11 @@ components:
           - UNSUPPORTED_MEDIA_TYPE
           - NOT_FOUND
           - METHOD_NOT_ALLOWED
+          - AUTH_REQUIRED
+          - INVALID_TOKEN
+          - TOKEN_EXPIRED
+          - INVALID_CREDENTIALS
+          - FORBIDDEN
         message:
           type: string
         details:
@@ -348,6 +474,7 @@ components:
       - status
       - reason
       - created_at
+      - user_id
       properties:
         id:
           type: string
@@ -370,3 +497,14 @@ components:
           type: string
           format: date-time
           pattern: ^\d{4}-\d{2}-\d{2}T.*Z$
+        user_id:
+          type: string
+          pattern: ^[a-zA-Z0-9_-]{1,64}$
+          description: Propietario obtenido del sub del JWT por el gateway; nunca
+            se acepta en el cuerpo de creación.
+  securitySchemes:
+    InternalKey:
+      type: apiKey
+      in: header
+      name: X-Internal-Key
+      description: Clave interna del gateway. No se usa el JWT en este servicio.

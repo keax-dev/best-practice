@@ -25,6 +25,16 @@ class DeductionsAPI(ContractView):
         return current_app.extensions["proxy_client"].forward("inventories")
 
 
+class LoginAPI(ContractView):
+    def post(self) -> ResponseReturnValue:
+        return current_app.extensions["proxy_client"].forward("auth")
+
+
+blueprint.add_url_rule(
+    "/api/v1/auth/login", view_func=LoginAPI.as_view("login"), methods=["POST"]
+)
+
+
 blueprint.add_url_rule(
     "/api/v1/orders", view_func=OrdersAPI.as_view("orders"), methods=["GET", "POST"]
 )

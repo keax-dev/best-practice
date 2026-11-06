@@ -1,0 +1,221 @@
+openapi: 3.0.3
+info:
+  title: Autenticación
+  version: 1.0.0
+  description: Dos usuarios de práctica; firma JWT RS256. La clave privada no sale
+    de este servicio.
+servers:
+- url: http://127.0.0.1:5003
+- url: /
+paths:
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      summary: Iniciar sesión y obtener un JWT
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginInput'
+            example:
+              username: client
+              password: Client123!
+      responses:
+        '200':
+          description: Autenticación exitosa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Token'
+              example:
+                access_token: eyJ...example
+                token_type: Bearer
+                expires_in: 900
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '401':
+          description: Usuario o contraseña incorrectos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_CREDENTIALS
+                message: Usuario o contraseña incorrectos
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+  /health:
+    get:
+      operationId: getHealth
+      summary: getHealth
+      responses:
+        '200':
+          description: Operación completada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+              example:
+                status: ok
+                service: onb-msa-sp-auth
+        '400':
+          description: Solicitud inválida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INVALID_INPUT
+                message: Solicitud inválida
+                details: {}
+        '404':
+          description: Recurso inexistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: NOT_FOUND
+                message: Recurso inexistente
+                details: {}
+        '405':
+          description: Método no permitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: METHOD_NOT_ALLOWED
+                message: Método no permitido
+                details: {}
+        '415':
+          description: Se requiere application/json
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: UNSUPPORTED_MEDIA_TYPE
+                message: Se requiere application/json
+                details: {}
+        '500':
+          description: Error interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: INTERNAL_ERROR
+                message: Error interno
+                details: {}
+      security: []
+components:
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required:
+      - code
+      - message
+      - details
+      properties:
+        code:
+          type: string
+          enum:
+          - INVALID_INPUT
+          - PRODUCT_NOT_FOUND
+          - ORDER_NOT_FOUND
+          - INSUFFICIENT_STOCK
+          - IDEMPOTENCY_CONFLICT
+          - SERVICE_UNAVAILABLE
+          - UPSTREAM_TIMEOUT
+          - INVALID_RESPONSE
+          - INTERNAL_ERROR
+          - UNSUPPORTED_MEDIA_TYPE
+          - NOT_FOUND
+          - METHOD_NOT_ALLOWED
+          - AUTH_REQUIRED
+          - INVALID_TOKEN
+          - TOKEN_EXPIRED
+          - INVALID_CREDENTIALS
+          - FORBIDDEN
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    Health:
+      type: object
+      additionalProperties: false
+      required:
+      - status
+      - service
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+        service:
+          type: string
+    LoginInput:
+      type: object
+      additionalProperties: false
+      required:
+      - username
+      - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          type: string
+          minLength: 1
+          maxLength: 128
+    Token:
+      type: object
+      additionalProperties: false
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      properties:
+        access_token:
+          type: string
+          minLength: 1
+        token_type:
+          type: string
+          enum:
+          - Bearer
+        expires_in:
+          type: integer
+          minimum: 1

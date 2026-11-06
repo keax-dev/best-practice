@@ -30,12 +30,15 @@ def test_confirm_and_client_uses_gateway(client, monkeypatch):
     assert response.status_code == 201
     order = response.json
     assert order["status"] == "CONFIRMADO"
+    assert order["user_id"] == "user-admin"
     assert order["reason"] is None
     UUID(order["id"])
     assert datetime.fromisoformat(order["created_at"]).utcoffset().total_seconds() == 0
     assert calls[0][0] == "http://127.0.0.1:5000/api/v1/inventories/deductions"
     assert calls[0][1]["timeout"] == (1, 5)
     assert calls[0][1]["allow_redirects"] is False
+    assert "X-Orders-Service-Key" in calls[0][1]["headers"]
+    assert "Authorization" not in calls[0][1]["headers"]
     assert client.get(f"/api/v1/orders/{order['id']}").json == order
     assert client.get("/api/v1/orders").json == [order]
 
@@ -137,7 +140,9 @@ def test_malformed_and_media_type(client):
 
 
 def test_invalid_response_is_controlled(app, client, monkeypatch, caplog):
-    monkeypatch.setattr(app.extensions["order_service"], "list_all", lambda: [object()])
+    monkeypatch.setattr(
+        app.extensions["order_service"], "list_all", lambda *args: [object()]
+    )
     response = client.get("/api/v1/orders")
     assert response.status_code == 500
     assert response.json["code"] == "INTERNAL_ERROR"

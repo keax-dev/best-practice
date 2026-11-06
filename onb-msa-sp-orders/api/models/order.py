@@ -6,6 +6,7 @@ from datetime import datetime
 @dataclass(frozen=True)
 class Order:
     id: str
+    user_id: str
     product_id: int
     quantity: int
     status: str

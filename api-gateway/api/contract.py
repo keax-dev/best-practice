@@ -19,6 +19,7 @@ from openapi_core.exceptions import OpenAPIError
 from werkzeug.exceptions import HTTPException
 
 from api.errors import BusinessError
+from api.security import authorize_request
 
 
 def error_response(
@@ -55,6 +56,18 @@ class ContractView(MethodView):
     def dispatch_request(self, **kwargs) -> ResponseReturnValue:
         contract = current_app.extensions["openapi"]
         operation_request = FlaskOpenAPIRequest(request)
+        try:
+            authorize_request()
+        except BusinessError as error:
+            response = error_response(
+                error.code, error.message, error.status, error.details
+            )
+            if (
+                error.status == 401
+                and current_app.config["SERVICE_NAME"] == "api-gateway"
+            ):
+                response.headers["WWW-Authenticate"] = "Bearer"
+            return self._checked(operation_request, response)
         try:
             if request.method == "POST":
                 if not request.is_json:
@@ -101,7 +114,10 @@ class ContractView(MethodView):
             )
         except Exception:
             current_app.logger.exception("Respuesta fuera del contrato OpenAPI")
-            if current_app.config["SERVICE_NAME"] == "api-gateway":
+            if (
+                current_app.config["SERVICE_NAME"] == "api-gateway"
+                and request.path != "/health"
+            ):
                 return error_response(
                     "INVALID_RESPONSE", "Respuesta inválida del servicio", 502
                 )

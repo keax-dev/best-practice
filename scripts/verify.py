@@ -7,7 +7,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> None:
-    for folder in ["api-gateway", "onb-msa-sp-orders", "onb-msa-sp-inventories", "."]:
+    for folder in [
+        "onb-msa-sp-auth",
+        "api-gateway",
+        "onb-msa-sp-orders",
+        "onb-msa-sp-inventories",
+        ".",
+    ]:
         print(f"\nChecking {folder}", flush=True)
         subprocess.run(
             [sys.executable, "-m", "pytest", "test", "-q"],

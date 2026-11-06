@@ -2,7 +2,7 @@
 from urllib.parse import urlsplit
 
 import requests
-from flask import Response, request
+from flask import Response, current_app, g, request
 
 from api.errors import BusinessError
 
@@ -38,10 +38,15 @@ class ProxyHTTPClient:
         connect_timeout: float,
         orders_timeout: float,
         inventories_timeout: float,
+        auth_timeout: float,
     ) -> None:
         self.destinations = destinations
         self.connect_timeout = connect_timeout
-        self.timeouts = {"orders": orders_timeout, "inventories": inventories_timeout}
+        self.timeouts = {
+            "orders": orders_timeout,
+            "inventories": inventories_timeout,
+            "auth": auth_timeout,
+        }
 
     def forward(self, resource: str) -> Response:
         destination = self.destinations[resource]
@@ -57,6 +62,27 @@ class ProxyHTTPClient:
                 "SERVICE_UNAVAILABLE", "Bucle de enrutamiento bloqueado", 502
             )
         headers = clean_headers(request.headers)
+        # Nunca confiar en identidad ni credenciales internas que envíe el cliente.
+        private_headers = {
+            "authorization",
+            "x-user-id",
+            "x-user-role",
+            "x-internal-key",
+            "x-orders-service-key",
+        }
+        headers = {
+            name: value
+            for name, value in headers.items()
+            if name.lower() not in private_headers
+        }
+        if resource != "auth":
+            headers.update(
+                {
+                    "X-Internal-Key": current_app.config["INTERNAL_API_KEY"],
+                    "X-User-Id": g.user_id,
+                    "X-User-Role": g.user_role,
+                }
+            )
         headers["X-Gateway-Route"] = ",".join(
             [part for part in visited if part] + [resource]
         )
