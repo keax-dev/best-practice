@@ -2,7 +2,7 @@
   "generator": "openapi-generator-cli",
   "version": "7.27.0",
   "application": "orders",
-  "input_sha256": "ff916aded0b82981ca933ce7cc50b0ecf5c1042c0cbcfa1c88698bf38899b2fa",
+  "input_sha256": "83e44f6eee82a29cf7fb8ec4bbd040e760dad334a2201263af956e13499dedd9",
   "files": [
     "__init__.py",
     "clients/__init__.py",

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Pedidos
-  version: 2.0.0
+  version: 3.0.0
   description: Contrato definido antes de implementar. Los errores 400 incluyen JSON
     malformado; 415 indica contenido no soportado.
 servers:
@@ -12,10 +12,11 @@ paths:
   /api/v1/orders:
     post:
       operationId: createOrder
-      summary: createOrder
+      summary: Crear un pedido pendiente de validación
+      description: Guarda el pedido y responde con CREADO sin esperar a Inventario. La validación se ejecuta en segundo plano; consultar el pedido para conocer su estado final.
       responses:
         '201':
-          description: Operación completada
+          description: Pedido guardado con estado CREADO; validación pendiente
           content:
             application/json:
               schema:
@@ -24,7 +25,7 @@ paths:
                 id: 550e8400-e29b-41d4-a716-446655440000
                 product_id: 1
                 quantity: 2
-                status: CONFIRMADO
+                status: CREADO
                 reason: null
                 created_at: '2026-11-04T12:00:00Z'
                 user_id: user-client
@@ -488,7 +489,7 @@ components:
           enum:
           - CREADO
           - CONFIRMADO
-          - RECHAZADO
+          - CANCELADO
           - ERROR_VALIDACION
         reason:
           type: string

@@ -22,18 +22,19 @@ def test_direct_access_and_fake_identity_rejected(client):
     )
 
 
-def test_owner_from_internal_identity_not_body(app, client, monkeypatch):
+def test_owner_from_internal_identity_not_body(app, client, monkeypatch, wait_order):
     monkeypatch.setattr(
         app.extensions["order_service"].inventory_client,
         "validate",
         lambda _: ("CONFIRMADO", None),
     )
     body = {"product_id": 1, "quantity": 1}
-    admin_order = client.post("/api/v1/orders", json=body).json
+    admin_order = wait_order(client.post("/api/v1/orders", json=body).json["id"])
     headers = {"X-User-Id": "user-client", "X-User-Role": "CLIENT"}
     response = client.post("/api/v1/orders", json=body, headers=headers)
     assert response.status_code == 201
-    client_order = response.json
+    assert response.json["status"] == "CREADO"
+    client_order = wait_order(response.json["id"])
     assert client_order["user_id"] == "user-client"
     assert admin_order["user_id"] == "user-admin"
     assert len(client.get("/api/v1/orders").json) == 2

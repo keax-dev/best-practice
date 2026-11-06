@@ -41,13 +41,18 @@ Usuario → Gateway :5000 → Autenticación :5003 → JWT firmado con RS256
 
 CREACIÓN DE PEDIDO
 Usuario con JWT → Gateway → Pedidos :5001
-                  │          │ guarda user_id y estado CREADO
-                  │          │ llama por HTTP con credencial exclusiva de Pedidos
-                  ◄──────────┘
-                  │
-                  └──────→ Inventario :5002 → descuento atómico e idempotente
-                  ◄───────┘
-                  └──────→ Pedidos actualiza estado → Gateway → Usuario
+Usuario         ← Gateway ← HTTP 201 con user_id y estado CREADO
+
+VALIDACIÓN EN SEGUNDO PLANO
+Trabajador de Pedidos → Gateway → Inventario :5002
+                                 descuento atómico e idempotente
+Trabajador de Pedidos ← Gateway ← resultado del descuento
+       │ actualiza el pedido en memoria
+       ▼
+CONFIRMADO / CANCELADO / ERROR_VALIDACION
+
+CONSULTA POSTERIOR
+Usuario con JWT → Gateway → GET de Pedidos → estado actualizado
 ```
 
 El recorrido de negocio sigue siendo **Cliente → Gateway → Pedidos → Gateway →
@@ -57,7 +62,7 @@ Inventario directamente.
 | Aplicación | Puerto | Responsabilidad |
 |---|---|---|
 | `api-gateway` | 5000 | Validar JWT, autorizar rutas y reenviar HTTP |
-| `onb-msa-sp-orders` | 5001 | Guardar pedidos, controlar propiedad y coordinar descuentos |
+| `onb-msa-sp-orders` | 5001 | Guardar pedidos, controlar propiedad y coordinar descuentos en segundo plano |
 | `onb-msa-sp-inventories` | 5002 | Consultar productos y descontar stock con un lock |
 | `onb-msa-sp-auth` | 5003 | Validar contraseñas de dos usuarios y emitir JWT |
 
@@ -246,6 +251,7 @@ Los `.env` no se suben a Git.
 | Pedidos | `API_GATEWAY_URL` | `http://127.0.0.1:5000` |
 | Pedidos | `CONNECT_TIMEOUT` | `1` segundo |
 | Pedidos | `VALIDATION_TIMEOUT` | `5` segundos |
+| Pedidos | `VALIDATION_WORKERS` | `4` trabajadores simultáneos; entero positivo |
 | Auth y Gateway | `JWT_ISSUER` | `coe-auth` |
 | Auth y Gateway | `JWT_AUDIENCE` | `coe-backend` |
 | Auth | `JWT_ACCESS_TTL` | `900` segundos (15 minutos) |
@@ -273,16 +279,17 @@ el puerto en el que arranca el servidor. Para seguir esta guía conserva esos pu
 
 `requests` utiliza `(timeout de conexión, timeout de lectura)`; el segundo limita
 la espera sin datos, no el tiempo total de una respuesta que envía datos lentamente.
-Si cambias tiempos, conserva estos márgenes:
+Para dar tiempo al gateway a responder antes de que el trabajador abandone la llamada,
+conserva este margen:
 
 ```text
 VALIDATION_TIMEOUT de Pedidos > conexión del gateway + INVENTORIES_TIMEOUT
-ORDERS_TIMEOUT del gateway > conexión de Pedidos + VALIDATION_TIMEOUT + margen
 ```
 
-Así Pedidos puede guardar y responder `ERROR_VALIDACION` antes de vencer la
-solicitud original. El gateway comprueba también un mínimo de margen entre sus
-timeouts al iniciar. No hay reintentos automáticos ni redirecciones HTTP.
+`ORDERS_TIMEOUT` limita las solicitudes HTTP del gateway a Pedidos, que ahora
+responde sin esperar a Inventario. Ya no necesita cubrir el recorrido interno
+completo. Un fallo posterior del descuento se registra en el pedido y se conoce
+mediante GET. No hay reintentos automáticos ni redirecciones HTTP.
 
 ## Paso 5. Ejecutar las pruebas
 
@@ -300,22 +307,35 @@ pruebas globales. Esto evita mezclar los paquetes `api` de aplicaciones diferent
 Las pruebas usan repositorios y credenciales aislados; la prueba global genera
 claves temporales, inicia cuatro procesos reales y los cierra al terminar.
 
-La suite actual contiene **127 pruebas**:
+La suite actual contiene **134 pruebas**:
 
 | Suite | Pruebas |
 |---|---:|
 | Autenticación, incluida generación | 21 |
 | API Gateway | 32 |
-| Pedidos | 39 |
+| Pedidos | 46 |
 | Inventario | 26 |
 | Contratos, preparación de claves y recorrido HTTP completo | 9 |
-| **Total** | **127** |
+| **Total** | **134** |
 
 Verás una sección `Checking ...` por suite y su resumen `passed`. Si una falla,
 el script se detiene y muestra el error; no debes interpretar los resúmenes de las
 suites anteriores como una verificación completa. Las pruebas no modifican tus
 claves de `.secrets`. Al terminar tampoco dejan las aplicaciones disponibles:
 para usarlas manualmente debes arrancarlas con el paso 6.
+
+Si quieres conservar tus servidores abiertos, puedes ejecutar la verificación
+en cuatro puertos alternativos libres (5100–5103). Solo cambia los servidores de
+la prueba; tus aplicaciones locales conservan sus puertos:
+
+```powershell
+$env:TEST_BASE_PORT = '5100'
+try {
+    .\.venv\Scripts\python.exe .\scripts\verify.py
+} finally {
+    Remove-Item Env:TEST_BASE_PORT
+}
+```
 
 Para ejecutar una suite individual desde la raíz:
 
@@ -347,7 +367,9 @@ Las pruebas cubren login y hashes, firma y claims JWT, tokens vencidos/alterados
 roles, suplantación por encabezados, acceso directo a servicios, propiedad de pedidos,
 credencial de servicio limitada, entradas sin efectos, errores HTTP, respuestas
 fuera de contrato, idempotencia, concurrencia, stock no negativo, caída de Inventario
-y timeout real. También verifican rutas y compatibilidad de los cuatro contratos.
+y timeout real. Comprueban que POST devuelve `CREADO` incluso con Inventario
+bloqueado, la posterior transición de estado y el límite de trabajadores.
+También verifican rutas y compatibilidad de los cuatro contratos.
 
 ## Paso 6. Levantar las cuatro aplicaciones
 
@@ -452,8 +474,9 @@ Invoke-RestMethod "$baseUrl/api/v1/orders/$($clientOrder.id)" -Headers $adminHea
 Invoke-RestMethod "$baseUrl/api/v1/inventories" -Headers $adminHeaders
 ```
 
-Con Inventario recién iniciado, el primer pedido devuelve HTTP 201, queda
-`CONFIRMADO`, tiene `user_id: user-client`, `reason` nulo y deja café con stock 8.
+El primer POST devuelve HTTP 201 con `CREADO`, `user_id: user-client` y `reason`
+nulo. Con Inventario disponible, después pasa a `CONFIRMADO` y deja café con stock 8.
+Un GET inmediato puede devolver todavía `CREADO` o encontrar la validación ya terminada.
 Repetir la creación genera un UUID nuevo y vuelve a consumir existencias.
 
 La respuesta del primer pedido será similar a esta; el UUID y la fecha se generan
@@ -465,11 +488,36 @@ en cada solicitud:
   "user_id": "user-client",
   "product_id": 1,
   "quantity": 2,
-  "status": "CONFIRMADO",
+  "status": "CREADO",
   "reason": null,
   "created_at": "2026-11-05T12:00:00.000000Z"
 }
 ```
+
+Para esperar el resultado, define esta función en la quinta terminal y consulta
+el UUID recibido. El límite es de 30 segundos; la espera del cliente no cancela
+el pedido ni su validación:
+
+```powershell
+function Wait-Order {
+    param([string]$OrderId, [hashtable]$Headers)
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        $order = Invoke-RestMethod "$baseUrl/api/v1/orders/$OrderId" -Headers $Headers -TimeoutSec 5
+        if ($order.status -ne 'CREADO') { return $order }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $deadline)
+    throw "El pedido $OrderId sigue pendiente; puedes volver a consultarlo."
+}
+
+$clientOrder = Wait-Order -OrderId $clientOrder.id -Headers $clientHeaders
+$clientOrder | Format-List
+Invoke-RestMethod "$baseUrl/api/v1/inventories/1" -Headers $adminHeaders
+```
+
+En Swagger, el procedimiento equivalente es copiar el `id` del POST y ejecutar
+`GET /api/v1/orders/{order_id}` hasta que deje de mostrar `CREADO`. No hay notificación
+push ni actualización automática de la pantalla.
 
 El `user_id` de esa respuesta identifica al propietario. Un JWT del administrador
 produce `user-admin`; uno del cliente produce `user-client`. El rol no cambia el
@@ -494,18 +542,21 @@ Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHea
 Invoke-RestMethod "$baseUrl/api/v1/orders"
 ```
 
-Casos de negocio que sí crean un pedido (HTTP 201):
+Casos de negocio que también responden HTTP 201 con `CREADO` y luego se cancelan:
 
 ```powershell
-# RECHAZADO: stock insuficiente, sin modificar existencias.
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":100}'
+# CANCELADO al consultar: stock insuficiente, sin modificar existencias.
+$cancelledOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":100}'
+Wait-Order -OrderId $cancelledOrder.id -Headers $clientHeaders
 
-# RECHAZADO: producto inexistente.
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":999,"quantity":1}'
+# CANCELADO al consultar: producto inexistente.
+$missingProductOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":999,"quantity":1}'
+Wait-Order -OrderId $missingProductOrder.id -Headers $clientHeaders
 ```
 
 Para un fallo técnico, detén solamente Inventario y crea un pedido válido: recibirás
-201 con `ERROR_VALIDACION` y `No se pudo completar la validación`. Un GET autorizado
+201 con `CREADO`. Al consultar después, verás `ERROR_VALIDACION` y
+`No se pudo completar la validación`. Un GET autorizado
 de inventario devolverá 502 por conexión fallida o 504 si la conexión agota el timeout.
 Reiniciar Inventario restablece sus existencias y olvida sus descuentos anteriores.
 
@@ -516,6 +567,7 @@ Pasos exactos, después de ejecutar el login del paso 7:
 
 ```powershell
 $failedOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":1}'
+$failedOrder = Wait-Order -OrderId $failedOrder.id -Headers $clientHeaders
 $failedOrder | Format-List
 ```
 
@@ -644,15 +696,24 @@ Consulta la [guía de generación](codegen/README.md) y el [detalle de Auth](onb
 
 | Estado del pedido | Significado |
 |---|---|
-| `CREADO` | Guardado y pendiente de validar; transitorio |
+| `CREADO` | Guardado y pendiente de validar; estado de la respuesta de creación |
 | `CONFIRMADO` | Inventario confirmó el descuento |
-| `RECHAZADO` | Producto inexistente o stock insuficiente |
+| `CANCELADO` | Producto inexistente o stock insuficiente |
 | `ERROR_VALIDACION` | Fallo técnico; no se conoce un resultado válido |
 
-El flujo es **síncrono**: la creación espera la validación HTTP antes de responder.
-Normalmente el cliente no observa `CREADO`. Un pedido guardado devuelve 201 aunque
-termine rechazado o con error técnico. Entradas inválidas no crean pedidos; los
-booleanos no se aceptan como enteros.
+El flujo es **asíncrono**: POST guarda el pedido, programa una tarea y devuelve
+201 con una copia inmutable en estado `CREADO`. La tarea puede finalizar incluso
+antes de que el cliente haga su primer GET; ese GET devuelve el estado actual.
+El resultado final no modifica la respuesta del POST ya emitida. Entradas inválidas
+no crean pedidos ni programan tareas; los booleanos no se aceptan como enteros.
+
+Pedidos crea un `ThreadPoolExecutor` por instancia de aplicación, con cuatro
+trabajadores por defecto. Los pedidos adicionales esperan en su cola en memoria.
+Cada trabajador usa el cliente HTTP generado para llamar a Inventario mediante
+el gateway, sin depender del contexto de la solicitud Flask ni del JWT del usuario.
+El repositorio de pedidos ya protege lecturas y escrituras con un lock, y sus
+modelos inmutables evitan modificar la respuesta inicial desde otro hilo.
+No hay cancelación manual de pedidos ni recuperación automática de tareas fallidas.
 
 Todos los errores siguen este formato, sin trazas internas:
 
@@ -758,6 +819,9 @@ Pulsa `Ctrl+C` en las cuatro terminales. Para empezar con datos iniciales cohere
 reinicia Pedidos e Inventario; puedes dejar Auth y Gateway levantados si su
 configuración no cambió. Reiniciar solo uno de los servicios reinicia solo su memoria.
 La próxima vez reutiliza `.venv` y `.secrets`, levanta las cuatro apps y haz login.
+Al cerrar Pedidos normalmente con `Ctrl+C`, se espera a las validaciones aceptadas;
+puede tardar según sus timeouts y la cantidad en cola. Un cierre forzado no garantiza
+que terminen. El resultado sigue viviendo solo en memoria y se pierde al salir.
 Después de suspender Windows comprueba los health; no hay servicios instalados que
 arranquen automáticamente. Las claves se cargan al iniciar, no por cada solicitud.
 
@@ -797,14 +861,17 @@ en una base de datos ni levantar otro componente de infraestructura.
   Varias instancias tendrían memorias y locks distintos: usa un proceso por app.
 - Un timeout o respuesta perdida deja un resultado incierto: Inventario podría
   haber descontado antes del fallo. No hay compensación ni recuperación automática.
+- Las validaciones pendientes viven en la cola del proceso de Pedidos. No hay
+  cola persistente, límite de pedidos en espera ni recuperación tras una caída.
+  `VALIDATION_WORKERS` limita los trabajadores simultáneos, no la longitud de la cola.
 - Los JWT vencen; no hay refresh tokens, revocación inmediata ni endpoint de logout.
   El gateway verifica localmente, por lo que un token válido no depende de que Auth
   siga disponible. El login sí necesita ese servicio.
 - Las cuentas quemadas y el HTTP local con claves internas son una práctica educativa.
   No expongas estos puertos a Internet. Para un entorno real habría que proteger
   el transporte, aislar los servicios y administrar usuarios y secretos adecuadamente.
-- No hay base de datos, ORM, Redis, contenedores, mensajería, frontend ni tareas de negocio
-  en segundo plano. Los archivos de claves son configuración, no persistencia de negocio.
+- No hay base de datos, ORM, Redis, contenedores, broker de mensajes ni frontend.
+  Los archivos de claves son configuración, no persistencia de negocio.
 
 ## Otro material y referencias
 
@@ -813,3 +880,5 @@ Los fundamentos se conservan en la rama
 Referencias: [PyJWT](https://pyjwt.readthedocs.io/en/stable/api.html),
 [Werkzeug](https://werkzeug.palletsprojects.com/en/stable/utils/) e
 [integración Flask de openapi-core](https://python-openapi.org/openapi-core/docs/latest/integrations/flask/).
+La ejecución en segundo plano usa
+[`ThreadPoolExecutor` de Python](https://docs.python.org/3.14/library/concurrent.futures.html#threadpoolexecutor).

@@ -7,19 +7,21 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from threading import Thread
+from threading import Event, Thread
 from uuid import uuid4
 
 import pytest
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
+BASE_PORT = int(os.environ.get("TEST_BASE_PORT", "5000"))
+PORTS = tuple(BASE_PORT + offset for offset in range(4))
 
 
 @pytest.fixture
 def system(tmp_path):
     # No tocar procesos ajenos: la prueba exige que sus puertos estén libres.
-    for port in (5000, 5001, 5002, 5003):
+    for port in PORTS:
         with socket.socket() as probe:
             try:
                 probe.bind(("127.0.0.1", port))
@@ -40,21 +42,21 @@ def system(tmp_path):
     processes = {}
     handles = []
     folders = {
-        "auth": ("onb-msa-sp-auth", 5003),
-        "gateway": ("api-gateway", 5000),
-        "orders": ("onb-msa-sp-orders", 5001),
-        "inventories": ("onb-msa-sp-inventories", 5002),
+        "auth": ("onb-msa-sp-auth", BASE_PORT + 3),
+        "gateway": ("api-gateway", BASE_PORT),
+        "orders": ("onb-msa-sp-orders", BASE_PORT + 1),
+        "inventories": ("onb-msa-sp-inventories", BASE_PORT + 2),
     }
     environment = {
         **os.environ,
-        "ORDERS_SERVICE_URL": "http://127.0.0.1:5001",
-        "INVENTORIES_SERVICE_URL": "http://127.0.0.1:5002",
-        "API_GATEWAY_URL": "http://127.0.0.1:5000",
+        "ORDERS_SERVICE_URL": f"http://127.0.0.1:{BASE_PORT + 1}",
+        "INVENTORIES_SERVICE_URL": f"http://127.0.0.1:{BASE_PORT + 2}",
+        "API_GATEWAY_URL": f"http://127.0.0.1:{BASE_PORT}",
         "CONNECT_TIMEOUT": "1",
         "ORDERS_TIMEOUT": "10",
         "INVENTORIES_TIMEOUT": "2",
         "VALIDATION_TIMEOUT": "5",
-        "AUTH_SERVICE_URL": "http://127.0.0.1:5003",
+        "AUTH_SERVICE_URL": f"http://127.0.0.1:{BASE_PORT + 3}",
         "AUTH_TIMEOUT": "3",
         "JWT_PRIVATE_KEY_FILE": str(key_directory / "jwt-private.pem"),
         "JWT_PUBLIC_KEY_FILE": str(key_directory / "jwt-public.pem"),
@@ -69,8 +71,18 @@ def system(tmp_path):
         for name, (folder, port) in folders.items():
             handle = (tmp_path / f"{name}.log").open("w", encoding="utf-8")
             handles.append(handle)
+            server_command = (
+                "from api import create_app; "
+                f"create_app().run(host='127.0.0.1', port={port}, "
+                "threaded=True, use_reloader=False, debug=False)"
+            )
             processes[name] = subprocess.Popen(
-                [sys.executable, "-u", "app.py"],
+                [
+                    sys.executable,
+                    "-u",
+                    "-c",
+                    server_command,
+                ],
                 cwd=ROOT / folder,
                 env=environment,
                 stdout=handle,
@@ -105,7 +117,7 @@ def system(tmp_path):
 
 def test_full_http_flow_and_failure_modes(system):
     processes, logs = system
-    base = "http://127.0.0.1:5000"
+    base = f"http://127.0.0.1:{BASE_PORT}"
 
     def login(username, password):
         response = requests.post(
@@ -129,7 +141,7 @@ def test_full_http_flow_and_failure_modes(system):
         ).status_code
         == 401
     )
-    for port, resource in [(5001, "orders"), (5002, "inventories")]:
+    for port, resource in [(BASE_PORT + 1, "orders"), (BASE_PORT + 2, "inventories")]:
         assert (
             requests.get(
                 f"http://127.0.0.1:{port}/api/v1/{resource}",
@@ -143,14 +155,26 @@ def test_full_http_flow_and_failure_modes(system):
             == 401
         )
 
-    def create(product_id, quantity, actor=admin):
+    def wait_order(order_id, actor=admin):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            response = actor.get(base + f"/api/v1/orders/{order_id}", timeout=5)
+            assert response.status_code == 200
+            if response.json()["status"] != "CREADO":
+                return response.json()
+            time.sleep(0.03)
+        pytest.fail(f"Order {order_id} did not finish validation")
+
+    def create(product_id, quantity, actor=admin, wait=True):
         response = actor.post(
             base + "/api/v1/orders",
             json={"product_id": product_id, "quantity": quantity},
             timeout=15,
         )
         assert response.status_code == 201
-        return response.json()
+        assert response.json()["status"] == "CREADO"
+        assert response.json()["reason"] is None
+        return wait_order(response.json()["id"], actor) if wait else response.json()
 
     order = create(1, 2)
     assert order["status"] == "CONFIRMADO"
@@ -197,7 +221,7 @@ def test_full_http_flow_and_failure_modes(system):
     assert len(admin.get(base + "/api/v1/orders", timeout=5).json()) == 2
     assert admin.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 8
     assert admin.get(base + f"/api/v1/orders/{order['id']}", timeout=5).json() == order
-    assert create(1, 99)["status"] == "RECHAZADO"
+    assert create(1, 99)["status"] == "CANCELADO"
     assert create(999, 1)["reason"] == "Producto inexistente"
     assert admin.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 8
     before = admin.get(base + "/api/v1/orders", timeout=5).json()
@@ -229,12 +253,12 @@ def test_full_http_flow_and_failure_modes(system):
     with ThreadPoolExecutor(max_workers=12) as pool:
         orders = list(pool.map(lambda _: create(1, 1), range(12)))
     assert sum(item["status"] == "CONFIRMADO" for item in orders) == 8
-    assert sum(item["status"] == "RECHAZADO" for item in orders) == 4
+    assert sum(item["status"] == "CANCELADO" for item in orders) == 4
     assert admin.get(base + "/api/v1/inventories/1", timeout=5).json()["stock"] == 0
     gateway_log = (logs / "gateway.log").read_text(encoding="utf-8")
     assert 'POST /api/v1/inventories/deductions HTTP/1.1" 200' in gateway_log
     assert 'POST /api/v1/orders HTTP/1.1" 201' in gateway_log
-    for port in (5000, 5001, 5002, 5003):
+    for port in PORTS:
         assert admin.get(f"http://127.0.0.1:{port}/docs", timeout=5).status_code == 200
         assert (
             admin.get(f"http://127.0.0.1:{port}/openapi.yaml", timeout=5).status_code
@@ -252,11 +276,14 @@ def test_full_http_flow_and_failure_modes(system):
         (504, "UPSTREAM_TIMEOUT"),
     }
 
-    # Sustituto HTTP lento solo para comprobar el timeout real del gateway.
+    # Bloquear la respuesta demuestra que el POST termina antes de la validación.
+    slow_started, release_slow = Event(), Event()
+
     class SlowInventory(BaseHTTPRequestHandler):
         def do_POST(self):
             self.rfile.read(int(self.headers.get("Content-Length", "0")))
-            time.sleep(3)
+            slow_started.set()
+            release_slow.wait(timeout=10)
             self.send_response(200)
             self.end_headers()
 
@@ -268,14 +295,22 @@ def test_full_http_flow_and_failure_modes(system):
         def log_message(self, *args):
             pass
 
-    server = ThreadingHTTPServer(("127.0.0.1", 5002), SlowInventory)
+    server = ThreadingHTTPServer(("127.0.0.1", BASE_PORT + 2), SlowInventory)
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         started = time.monotonic()
-        timed_out = create(2, 1)
+        pending = create(2, 1, wait=False)
+        assert time.monotonic() - started < 2
+        assert slow_started.wait(timeout=3)
+        assert (
+            admin.get(base + f"/api/v1/orders/{pending['id']}", timeout=5).json()[
+                "status"
+            ]
+            == "CREADO"
+        )
+        timed_out = wait_order(pending["id"])
         assert timed_out["status"] == "ERROR_VALIDACION"
-        assert time.monotonic() - started < 10
         timeout = admin.get(base + "/api/v1/inventories", timeout=5)
         assert timeout.status_code == 504
         assert timeout.json()["code"] == "UPSTREAM_TIMEOUT"
@@ -284,6 +319,7 @@ def test_full_http_flow_and_failure_modes(system):
             == timed_out
         )
     finally:
+        release_slow.set()
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)

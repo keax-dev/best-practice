@@ -1,4 +1,6 @@
 # Tema: aislar datos y usar credenciales internas explícitas en las pruebas.
+import time
+
 import pytest
 from api import create_app
 from flask.testing import FlaskClient
@@ -27,9 +29,26 @@ def security_environment(monkeypatch):
 def app():
     app = create_app({"TESTING": True})
     app.test_client_class = InternalClient
-    return app
+    yield app
+    # Terminar tareas antes de restaurar los mocks y pasar a la siguiente prueba.
+    app.extensions["validation_executor"].shutdown(wait=True)
 
 
 @pytest.fixture
 def client(app):
     return app.test_client()
+
+
+@pytest.fixture
+def wait_order(client):
+    def wait(order_id: str, timeout: float = 3) -> dict:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            response = client.get(f"/api/v1/orders/{order_id}")
+            assert response.status_code == 200
+            if response.json["status"] != "CREADO":
+                return response.json
+            time.sleep(0.01)
+        pytest.fail(f"Order {order_id} did not finish validation")
+
+    return wait

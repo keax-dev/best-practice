@@ -39,9 +39,9 @@ class InventoryHTTPClient:
                 return "CONFIRMADO", None
             error = ErrorSchema().load(response.json())
             if response.status_code == 404 and error.code == "PRODUCT_NOT_FOUND":
-                return "RECHAZADO", "Producto inexistente"
+                return "CANCELADO", "Producto inexistente"
             if response.status_code == 409 and error.code == "INSUFFICIENT_STOCK":
-                return "RECHAZADO", "Stock insuficiente"
+                return "CANCELADO", "Stock insuficiente"
         except (requests.RequestException, ValidationError, ValueError):
             pass
         return "ERROR_VALIDACION", "No se pudo completar la validación"

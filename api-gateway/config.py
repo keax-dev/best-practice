@@ -55,9 +55,4 @@ def load_config() -> dict:
         != 3
     ):
         raise ValueError("Destinations must be different")
-    if (
-        settings["ORDERS_TIMEOUT"]
-        <= settings["INVENTORIES_TIMEOUT"] + 2 * settings["CONNECT_TIMEOUT"]
-    ):
-        raise ValueError("ORDERS_TIMEOUT must allow time for the inner validation")
     return settings

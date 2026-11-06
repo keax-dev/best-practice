@@ -37,5 +37,8 @@ def load_config() -> dict:
         API_GATEWAY_URL=service_url("API_GATEWAY_URL", "http://127.0.0.1:5000"),
         CONNECT_TIMEOUT=positive_timeout("CONNECT_TIMEOUT", "1"),
         VALIDATION_TIMEOUT=positive_timeout("VALIDATION_TIMEOUT", "5"),
+        VALIDATION_WORKERS=int(os.getenv("VALIDATION_WORKERS", "4")),
     )
+    if settings["VALIDATION_WORKERS"] <= 0:
+        raise ValueError("VALIDATION_WORKERS must be a positive integer")
     return settings

@@ -79,6 +79,12 @@ Se generan transporte y DTO en `api/generated/clients/inventory/`.
 `api/clients/inventory.py` consume ese cliente, interpreta la respuesta de negocio
 y actualiza el estado a través del servicio de Pedidos.
 
+El POST de Pedidos devuelve el DTO inicial con `CREADO`. La validación se ejecuta
+en un trabajador de `ThreadPoolExecutor`; GET devuelve después `CONFIRMADO`,
+`CANCELADO` o `ERROR_VALIDACION`. Esta coordinación es lógica manual del servicio,
+no código generado. Al cambiar el enum de estados se regeneran los DTO de Pedidos,
+Gateway y el cliente que depende de su contrato.
+
 El cliente recibe `API_GATEWAY_URL`, los timeouts y `X-Orders-Service-Key` al
 construirse. No llama directamente al puerto de Inventario, no importa el código
 de otro servicio y no añade reintentos. Su ruta y serialización vienen del contrato

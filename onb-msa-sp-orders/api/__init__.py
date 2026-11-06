@@ -1,4 +1,6 @@
 # Tema: ensamblar dependencias una sola vez por instancia de aplicación.
+from concurrent.futures import ThreadPoolExecutor
+
 from config import load_config
 from flask import Flask
 
@@ -23,8 +25,13 @@ def create_app(settings: dict | None = None) -> Flask:
         app.config["ORDERS_SERVICE_KEY"],
     )
     app.extensions["order_repository"] = repository
-    app.extensions["order_service"] = OrderService(repository, client)
     configure_contract(app)
+    executor = ThreadPoolExecutor(
+        max_workers=app.config["VALIDATION_WORKERS"],
+        thread_name_prefix="order-validation",
+    )
+    app.extensions["validation_executor"] = executor
+    app.extensions["order_service"] = OrderService(repository, client, executor)
     implementation = OrdersAPIImpl(
         app.extensions["order_service"], app.config["SERVICE_NAME"]
     )

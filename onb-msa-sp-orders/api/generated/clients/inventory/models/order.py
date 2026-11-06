@@ -34,7 +34,7 @@ class OrderSchema(Schema):
         required=True,
         allow_none=False,
         validate=[
-            validate.OneOf(["CREADO", "CONFIRMADO", "RECHAZADO", "ERROR_VALIDACION"])
+            validate.OneOf(["CREADO", "CONFIRMADO", "CANCELADO", "ERROR_VALIDACION"])
         ],
     )
     reason = fields.String(required=True, allow_none=True, validate=[])

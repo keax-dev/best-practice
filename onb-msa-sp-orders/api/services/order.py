@@ -1,4 +1,6 @@
-# Tema: flujo síncrono de creación, validación y actualización.
+# Tema: crear pedidos y validar inventario en segundo plano.
+import logging
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -8,13 +10,19 @@ from api.errors import BusinessError
 from api.models.order import Order
 from api.repositories.order import OrderRepository
 
+logger = logging.getLogger(__name__)
+
 
 class OrderService:
     def __init__(
-        self, repository: OrderRepository, inventory_client: InventoryHTTPClient
+        self,
+        repository: OrderRepository,
+        inventory_client: InventoryHTTPClient,
+        executor: ThreadPoolExecutor,
     ) -> None:
         self.repository = repository
         self.inventory_client = inventory_client
+        self.executor = executor
 
     def create(self, product_id: int, quantity: int, user_id: str) -> Order:
         order = Order(
@@ -27,10 +35,31 @@ class OrderService:
             datetime.now(UTC),
         )
         self.repository.save(order)
-        status, reason = self.inventory_client.validate(order)
-        order = replace(order, status=status, reason=reason)
-        self.repository.save(order)
+        try:
+            self.executor.submit(self._validate, order)
+        except RuntimeError:
+            # Si el ejecutor se está cerrando, el pedido conserva un resultado consultable.
+            logger.exception(
+                "No se pudo programar la validación del pedido %s", order.id
+            )
+            self.repository.save(
+                replace(
+                    order,
+                    status="ERROR_VALIDACION",
+                    reason="No se pudo completar la validación",
+                )
+            )
+        # El objeto es inmutable: la respuesta siempre conserva el estado inicial.
         return order
+
+    def _validate(self, order: Order) -> None:
+        try:
+            status, reason = self.inventory_client.validate(order)
+        except Exception:
+            # Un error inesperado del trabajador tampoco debe dejar el pedido en CREADO.
+            logger.exception("Falló la validación del pedido %s", order.id)
+            status, reason = "ERROR_VALIDACION", "No se pudo completar la validación"
+        self.repository.save(replace(order, status=status, reason=reason))
 
     def list_all(self, user_id: str, role: str) -> list[Order]:
         orders = self.repository.list_all()
