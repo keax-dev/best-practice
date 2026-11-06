@@ -1,0 +1,23 @@
+additionalProperties:
+  packageName: api.generated
+  controllerPackage: interfaces
+  defaultController: orders_api
+  apiInterfaceName: OrdersAPI
+  hideGenerationTimestamp: true
+  disallowAdditionalPropertiesIfNotPresent: false
+  isGateway: false
+files:
+  routes.mustache:
+    templateType: SupportingFiles
+    folder: api/generated
+    destinationFilename: routes.py
+  runtime.mustache:
+    templateType: SupportingFiles
+    folder: api/generated
+    destinationFilename: runtime.py
+clients:
+- name: inventory
+  className: InventoryClient
+  contract: api-gateway/contracts/openapi.yaml
+  operations:
+  - deductInventory

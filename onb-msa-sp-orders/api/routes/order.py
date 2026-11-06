@@ -1,35 +1,49 @@
-# Tema: separar la interfaz HTTP del flujo del pedido.
+# Tema: implementar la API generada y mapear el modelo de negocio a su response.
 from uuid import UUID
 
-from flask import Blueprint, current_app, g, request
-from flask.typing import ResponseReturnValue
+from api.generated.interfaces.orders_api import OrdersAPI
+from api.generated.models.health import Health
+from api.generated.models.order import Order as OrderResponse
+from api.generated.models.order_input import OrderInput
+from api.models.order import Order
+from api.services.order import OrderService
 
-from api.contract import ContractView
-from api.schema.order import OrderInputSchema, OrderSchema
 
-blueprint = Blueprint("orders", __name__)
+def to_response(order: Order) -> OrderResponse:
+    return OrderResponse(
+        id=UUID(order.id),
+        user_id=order.user_id,
+        product_id=order.product_id,
+        quantity=order.quantity,
+        status=order.status,
+        reason=order.reason,
+        created_at=order.created_at,
+    )
 
 
-class OrdersAPI(ContractView):
-    def post(self) -> ResponseReturnValue:
-        data = OrderInputSchema().load(request.get_json())
-        order = current_app.extensions["order_service"].create(
-            **data, user_id=g.user_id
+class OrdersAPIImpl(OrdersAPI):
+    def __init__(self, service: OrderService, service_name: str) -> None:
+        self.service = service
+        self.service_name = service_name
+
+    def create_order(
+        self, body: OrderInput, x_user_id: str, x_user_role: str
+    ) -> OrderResponse:
+        # Los encabezados ya fueron autenticados y validados antes de entrar aquí.
+        return to_response(
+            self.service.create(body.product_id, body.quantity, user_id=x_user_id)
         )
-        return OrderSchema().dump(order), 201
 
-    def get(self, order_id: str | None = None) -> ResponseReturnValue:
-        service = current_app.extensions["order_service"]
-        if order_id is not None:
-            return OrderSchema().dump(
-                service.get(str(UUID(order_id)), g.user_id, g.user_role)
-            )
-        return OrderSchema(many=True).dump(service.list_all(g.user_id, g.user_role))
+    def list_orders(self, x_user_id: str, x_user_role: str) -> list[OrderResponse]:
+        return [
+            to_response(order)
+            for order in self.service.list_all(x_user_id, x_user_role)
+        ]
 
+    def get_order(
+        self, order_id: UUID, x_user_id: str, x_user_role: str
+    ) -> OrderResponse:
+        return to_response(self.service.get(str(order_id), x_user_id, x_user_role))
 
-blueprint.add_url_rule(
-    "/api/v1/orders", view_func=OrdersAPI.as_view("collection"), methods=["GET", "POST"]
-)
-blueprint.add_url_rule(
-    "/api/v1/orders/<order_id>", view_func=OrdersAPI.as_view("detail"), methods=["GET"]
-)
+    def get_health(self) -> Health:
+        return Health(status="ok", service=self.service_name)

@@ -1,0 +1,6 @@
+-r api-gateway/requirements.txt
+-r onb-msa-sp-orders/requirements.txt
+-r onb-msa-sp-inventories/requirements.txt
+-r onb-msa-sp-auth/requirements.txt
+openapi-generator-cli==7.27.0
+ruff==0.17.3

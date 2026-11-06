@@ -19,6 +19,7 @@ from openapi_core.exceptions import OpenAPIError
 from werkzeug.exceptions import HTTPException
 
 from api.errors import BusinessError
+from api.generated.models.error import Error, ErrorSchema
 from api.security import authorize_request
 
 
@@ -26,7 +27,8 @@ def error_response(
     code: str, message: str, status: int, details: dict | None = None
 ) -> ResponseReturnValue:
     return make_response(
-        {"code": code, "message": message, "details": details or {}}, status
+        ErrorSchema().dump(Error(code=code, message=message, details=details or {})),
+        status,
     )
 
 
@@ -125,20 +127,12 @@ class ContractView(MethodView):
         return response
 
 
-class HealthAPI(ContractView):
-    def get(self) -> ResponseReturnValue:
-        return {"status": "ok", "service": current_app.config["SERVICE_NAME"]}
-
-
 def configure_contract(app: Flask) -> None:
     path = Path(app.root_path).parent / "contracts" / "openapi.yaml"
     app.extensions["openapi"] = OpenAPI.from_file_path(str(path))
     app.register_error_handler(HTTPException, http_error)
     app.register_error_handler(Exception, unexpected_error)
     common = Blueprint("common", __name__)
-    common.add_url_rule(
-        "/health", view_func=HealthAPI.as_view("health"), methods=["GET"]
-    )
 
     @common.get("/openapi.yaml")
     def openapi_document() -> ResponseReturnValue:

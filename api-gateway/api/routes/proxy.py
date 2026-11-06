@@ -1,58 +1,41 @@
-# Tema: publicar exclusivamente las operaciones del contrato.
-from flask import Blueprint, current_app
-from flask.typing import ResponseReturnValue
+# Tema: implementar la interfaz generada preservando las respuestas HTTP del destino.
+from uuid import UUID
 
-from api.contract import ContractView
+from flask import Response
 
-blueprint = Blueprint("gateway", __name__)
-
-
-class OrdersAPI(ContractView):
-    def get(self, order_id: str | None = None) -> ResponseReturnValue:
-        return current_app.extensions["proxy_client"].forward("orders")
-
-    def post(self) -> ResponseReturnValue:
-        return current_app.extensions["proxy_client"].forward("orders")
+from api.clients.proxy import ProxyHTTPClient
+from api.generated.interfaces.gateway_api import GatewayAPI
+from api.generated.models.deduction_input import DeductionInput
+from api.generated.models.health import Health
+from api.generated.models.login_input import LoginInput
+from api.generated.models.order_input import OrderInput
 
 
-class InventoryAPI(ContractView):
-    def get(self, product_id: str | None = None) -> ResponseReturnValue:
-        return current_app.extensions["proxy_client"].forward("inventories")
+class GatewayAPIImpl(GatewayAPI):
+    def __init__(self, client: ProxyHTTPClient, service_name: str) -> None:
+        self.client = client
+        self.service_name = service_name
 
+    def create_order(self, body: OrderInput) -> Response:
+        return self.client.forward("orders")
 
-class DeductionsAPI(ContractView):
-    def post(self) -> ResponseReturnValue:
-        return current_app.extensions["proxy_client"].forward("inventories")
+    def list_orders(self) -> Response:
+        return self.client.forward("orders")
 
+    def get_order(self, order_id: UUID) -> Response:
+        return self.client.forward("orders")
 
-class LoginAPI(ContractView):
-    def post(self) -> ResponseReturnValue:
-        return current_app.extensions["proxy_client"].forward("auth")
+    def list_inventories(self) -> Response:
+        return self.client.forward("inventories")
 
+    def get_inventory(self, product_id: int) -> Response:
+        return self.client.forward("inventories")
 
-blueprint.add_url_rule(
-    "/api/v1/auth/login", view_func=LoginAPI.as_view("login"), methods=["POST"]
-)
+    def deduct_inventory(self, body: DeductionInput) -> Response:
+        return self.client.forward("inventories")
 
+    def login(self, body: LoginInput) -> Response:
+        return self.client.forward("auth")
 
-blueprint.add_url_rule(
-    "/api/v1/orders", view_func=OrdersAPI.as_view("orders"), methods=["GET", "POST"]
-)
-blueprint.add_url_rule(
-    "/api/v1/orders/<order_id>", view_func=OrdersAPI.as_view("order"), methods=["GET"]
-)
-blueprint.add_url_rule(
-    "/api/v1/inventories",
-    view_func=InventoryAPI.as_view("inventories"),
-    methods=["GET"],
-)
-blueprint.add_url_rule(
-    "/api/v1/inventories/<product_id>",
-    view_func=InventoryAPI.as_view("inventory"),
-    methods=["GET"],
-)
-blueprint.add_url_rule(
-    "/api/v1/inventories/deductions",
-    view_func=DeductionsAPI.as_view("deductions"),
-    methods=["POST"],
-)
+    def get_health(self) -> Health:
+        return Health(status="ok", service=self.service_name)

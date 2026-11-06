@@ -4,7 +4,8 @@ from uuid import uuid4
 
 import pytest
 from api import create_app
-from api.schema.inventory import DeductionInputSchema
+from api.generated.models.deduction_input import DeductionInputSchema
+from api.models.product import Product
 from marshmallow import ValidationError
 
 
@@ -126,7 +127,9 @@ def test_missing_product_and_invalid_path(client):
 
 def test_invalid_response_is_logged_and_controlled(app, client, monkeypatch, caplog):
     monkeypatch.setattr(
-        app.extensions["inventory_service"], "list_all", lambda: [object()]
+        app.extensions["inventory_service"],
+        "list_all",
+        lambda: [Product(1, "Invalid", -1)],
     )
     response = client.get("/api/v1/inventories")
     assert response.status_code == 500

@@ -1,10 +1,11 @@
 # Tema: comprobar estados de negocio, fallos técnicos y ausencia de efectos inválidos.
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
 import requests
-from api.schema.order import OrderInputSchema
+from api.generated.models.order_input import OrderInputSchema
+from api.models.order import Order
 from marshmallow import ValidationError
 
 
@@ -141,7 +142,11 @@ def test_malformed_and_media_type(client):
 
 def test_invalid_response_is_controlled(app, client, monkeypatch, caplog):
     monkeypatch.setattr(
-        app.extensions["order_service"], "list_all", lambda *args: [object()]
+        app.extensions["order_service"],
+        "list_all",
+        lambda *args: [
+            Order(str(uuid4()), "user-admin", 1, -1, "CREADO", None, datetime.now(UTC))
+        ],
     )
     response = client.get("/api/v1/orders")
     assert response.status_code == 500

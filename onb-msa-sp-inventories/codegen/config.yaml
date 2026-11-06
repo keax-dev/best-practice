@@ -1,0 +1,17 @@
+additionalProperties:
+  packageName: api.generated
+  controllerPackage: interfaces
+  defaultController: inventories_api
+  apiInterfaceName: InventoryAPI
+  hideGenerationTimestamp: true
+  disallowAdditionalPropertiesIfNotPresent: false
+  isGateway: false
+files:
+  routes.mustache:
+    templateType: SupportingFiles
+    folder: api/generated
+    destinationFilename: routes.py
+  runtime.mustache:
+    templateType: SupportingFiles
+    folder: api/generated
+    destinationFilename: runtime.py

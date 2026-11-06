@@ -5,8 +5,9 @@ from config import load_config
 from flask import Flask
 
 from api.contract import configure_contract
+from api.generated.routes import register_routes
 from api.repositories.user import UserRepository
-from api.routes.auth import blueprint
+from api.routes.auth import AuthAPIImpl
 from api.seed import USERS
 from api.services.auth import AuthService
 
@@ -29,5 +30,9 @@ def create_app(settings: dict | None = None) -> Flask:
         lifetime,
     )
     configure_contract(app)
-    app.register_blueprint(blueprint)
+    implementation = AuthAPIImpl(
+        app.extensions["auth_service"], app.config["SERVICE_NAME"]
+    )
+    app.extensions["auth_api"] = implementation
+    register_routes(app, implementation)
     return app

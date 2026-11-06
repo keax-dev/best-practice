@@ -1,0 +1,27 @@
+# Generado desde OpenAPI. No editar; ejecutar scripts/generate_apis.py.
+import requests
+{{#models}}
+{{#model}}
+from {{modelPackage}}.{{classFilename}} import {{classname}}, {{classname}}Schema
+{{/model}}
+{{/models}}
+
+
+class {{clientClassName}}:
+    def __init__(self, base_url: str, timeout: tuple[float, float], headers: dict[str, str]) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
+        self.headers = headers
+
+{{#apiInfo}}
+{{#apis}}
+{{#operations}}
+{{#operation}}
+    def {{operationId}}(self, body: {{{bodyParam.dataType}}}) -> requests.Response:
+        return requests.{{vendorExtensions.x-python-method}}(self.base_url + "{{path}}", json={{{bodyParam.dataType}}}Schema().dump(body),
+            timeout=self.timeout, headers=self.headers, allow_redirects=False)
+
+{{/operation}}
+{{/operations}}
+{{/apis}}
+{{/apiInfo}}

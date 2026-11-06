@@ -1,19 +1,20 @@
-# Tema: login público que delega la comprobación de credenciales.
-from flask import Blueprint, current_app, request
-from flask.typing import ResponseReturnValue
-
-from api.contract import ContractView
-from api.schema.auth import LoginSchema, TokenSchema
-
-blueprint = Blueprint("auth", __name__)
+# Tema: implementar la interfaz generada sin repetir rutas ni esquemas del contrato.
+from api.generated.interfaces.auth_api import AuthAPI
+from api.generated.models.health import Health
+from api.generated.models.login_input import LoginInput
+from api.generated.models.token import Token
+from api.services.auth import AuthService
 
 
-class LoginAPI(ContractView):
-    def post(self) -> ResponseReturnValue:
-        data = LoginSchema().load(request.get_json())
-        return TokenSchema().dump(current_app.extensions["auth_service"].login(**data))
+class AuthAPIImpl(AuthAPI):
+    def __init__(self, service: AuthService, service_name: str) -> None:
+        self.service = service
+        self.service_name = service_name
 
+    def login(self, body: LoginInput) -> Token:
+        # La lógica sigue independiente de los DTO utilizados por HTTP.
+        result = self.service.login(username=body.username, password=body.password)
+        return Token(**result)
 
-blueprint.add_url_rule(
-    "/api/v1/auth/login", view_func=LoginAPI.as_view("login"), methods=["POST"]
-)
+    def get_health(self) -> Health:
+        return Health(status="ok", service=self.service_name)

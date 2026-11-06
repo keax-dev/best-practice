@@ -1,0 +1,19 @@
+{
+  "generator": "openapi-generator-cli",
+  "version": "7.27.0",
+  "application": "inventories",
+  "input_sha256": "4b80a1f520d557f6b466cf266fa5753c1c87b44b9e3b8576e76d61afc0ed6699",
+  "files": [
+    "__init__.py",
+    "interfaces/__init__.py",
+    "interfaces/inventories_api.py",
+    "models/__init__.py",
+    "models/deduction.py",
+    "models/deduction_input.py",
+    "models/error.py",
+    "models/health.py",
+    "models/product.py",
+    "routes.py",
+    "runtime.py"
+  ]
+}

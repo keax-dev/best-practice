@@ -1,0 +1,24 @@
+# Generado desde OpenAPI. No editar; ejecutar scripts/generate_apis.py.
+import re
+from datetime import UTC
+
+from marshmallow import ValidationError, fields
+
+
+class UTCDateTime(fields.AwareDateTime):
+    def __init__(self, *, pattern: str | None = None, **kwargs) -> None:
+        self.pattern = pattern
+        super().__init__(**kwargs)
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        if self.pattern and isinstance(value, str) and re.search(self.pattern, value) is None:
+            raise ValidationError("Invalid UTC date-time format.")
+        return super()._deserialize(value, attr, data, **kwargs)
+
+    def _serialize(self, value, attr, obj, **kwargs):
+        if value is not None:
+            if value.utcoffset() is None:
+                raise ValidationError("A timezone-aware date-time is required.")
+            value = value.astimezone(UTC)
+        result = super()._serialize(value, attr, obj, **kwargs)
+        return result.replace("+00:00", "Z") if result else result

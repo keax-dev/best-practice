@@ -11,6 +11,11 @@ puedes ir directamente al [arranque de las cuatro aplicaciones](#paso-6-levantar
 y después al [login](#paso-7-comprobar-salud-e-iniciar-sesión).
 Para verificar el proyecto usa la sección de [pruebas](#paso-5-ejecutar-las-pruebas).
 
+El orden completo es: **requisitos → entorno y dependencias → comprobación de
+generación → claves → configuración opcional → pruebas → cuatro servidores →
+login y solicitudes**. Usa una quinta terminal para probar las APIs; las otras
+cuatro permanecen ocupadas por los servidores.
+
 | Necesitas… | Consulta |
 |---|---|
 | Entender el recorrido y los roles | [Arquitectura](#objetivo-y-recorrido) e [identidad](#identidad-roles-y-confianza-entre-aplicaciones) |
@@ -107,15 +112,20 @@ Si alguien obtiene esa clave podría suplantar identidad interna: no debe public
 
 Necesitas Windows con PowerShell, Git y Python 3.14.7. Para instalar dependencias
 necesitas Internet. No se necesita base de datos, Docker, Redis ni migraciones.
+La generación de las cuatro APIs y sus pruebas de regeneración utilizan **Java 21** y
+OpenAPI Generator. Para ejecutar las APIs con los archivos ya generados basta Python.
 
 ```powershell
 git --version
 py -3.14 --version
+java -version
 ```
 
 El segundo comando debe mostrar `Python 3.14.7` para reproducir el entorno
 verificado. Si `py` no se reconoce, instala Python con su lanzador para Windows
 y abre otra terminal. No copies `.venv` de otra computadora: créala en la nueva.
+`java -version` debe mostrar Java 21. Si no se reconoce, instala un JDK 21,
+añade su carpeta `bin` al `PATH` y abre PowerShell de nuevo antes de continuar.
 
 Si todavía no tienes el repositorio:
 
@@ -143,7 +153,7 @@ Los siguientes pasos parten de la raíz `coe-ing`.
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\python.exe --version
-.\.venv\Scripts\python.exe -m pip install -r .\api-gateway\requirements.txt -r .\onb-msa-sp-orders\requirements.txt -r .\onb-msa-sp-inventories\requirements.txt -r .\onb-msa-sp-auth\requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r .\requirements-codegen.txt
 .\.venv\Scripts\python.exe -m pip check
 ```
 
@@ -156,6 +166,30 @@ Compartir el entorno virtual facilita la práctica; las aplicaciones siguen sien
 procesos independientes. También pueden usar entornos separados instalando el
 `requirements.txt` correspondiente en cada uno. El script de preparación de claves
 requiere `cryptography`, incluido en las dependencias de Autenticación y Gateway.
+
+El `requirements-codegen.txt` de la raíz incluye las dependencias de ejecución de
+las cuatro aplicaciones y fija OpenAPI Generator 7.27.0 y Ruff 0.17.3. Cada app
+también tiene su propio `requirements-codegen.txt` para desarrollarla por separado.
+Para ejecutar una app con los archivos ya generados basta su `requirements.txt`;
+para ejecutar todas las pruebas necesitas las herramientas de generación y Java en `PATH`.
+
+Antes de continuar, comprueba que los archivos generados coincidan con los contratos:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py --check
+```
+
+Debe aparecer `generated files match the contract and templates` para las cuatro
+aplicaciones. Si faltan archivos o están desactualizados, regenera y comprueba otra vez:
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py --check
+```
+
+No necesitas regenerar en cada arranque: hazlo cuando cambien contratos,
+configuración o plantillas de generación. Si cambiaron las firmas, adapta también
+las implementaciones; el generador no escribe la lógica de negocio.
 
 ## Paso 3. Generar las claves locales
 
@@ -233,6 +267,9 @@ entre sus consumidores. El generador crea valores aleatorios más largos.
 
 Los destinos HTTP no admiten rutas, consultas ni credenciales y deben ser distintos.
 Inventario no conoce las URLs de los demás servicios.
+Los puertos de escucha están definidos en cada `app.py`: 5000, 5001, 5002 y 5003.
+Modificar una URL en `.env` solo cambia el destino de las llamadas HTTP; no cambia
+el puerto en el que arranca el servidor. Para seguir esta guía conserva esos puertos.
 
 `requests` utiliza `(timeout de conexión, timeout de lectura)`; el segundo limita
 la espera sin datos, no el tiempo total de una respuesta que envía datos lentamente.
@@ -263,16 +300,16 @@ pruebas globales. Esto evita mezclar los paquetes `api` de aplicaciones diferent
 Las pruebas usan repositorios y credenciales aislados; la prueba global genera
 claves temporales, inicia cuatro procesos reales y los cierra al terminar.
 
-El resultado verificado de la versión actual es **107 pruebas aprobadas**:
+La suite actual contiene **127 pruebas**:
 
 | Suite | Pruebas |
 |---|---:|
-| Autenticación | 15 |
-| API Gateway | 28 |
-| Pedidos | 33 |
-| Inventario | 22 |
+| Autenticación, incluida generación | 21 |
+| API Gateway | 32 |
+| Pedidos | 39 |
+| Inventario | 26 |
 | Contratos, preparación de claves y recorrido HTTP completo | 9 |
-| **Total** | **107** |
+| **Total** | **127** |
 
 Verás una sección `Checking ...` por suite y su resumen `passed`. Si una falla,
 el script se detiene y muestra el error; no debes interpretar los resúmenes de las
@@ -350,6 +387,9 @@ Debes ver `Running on http://127.0.0.1:` con su puerto correspondiente.
 El aviso de Flask sobre el servidor de desarrollo es normal: se usa solo para la
 práctica local. Cada app ejecuta **un proceso con hilos, sin debug ni recargador**.
 El gateway puede atender una llamada interna mientras espera la respuesta de Pedidos.
+Espera a que las cuatro terminales indiquen que sus servidores están escuchando
+antes de hacer login. Un `/health` correcto del gateway no comprueba si los otros
+tres servidores están disponibles.
 
 ## Paso 7. Comprobar salud e iniciar sesión
 
@@ -469,6 +509,32 @@ Para un fallo técnico, detén solamente Inventario y crea un pedido válido: re
 de inventario devolverá 502 por conexión fallida o 504 si la conexión agota el timeout.
 Reiniciar Inventario restablece sus existencias y olvida sus descuentos anteriores.
 
+Pasos exactos, después de ejecutar el login del paso 7:
+
+1. En la terminal 2 (Inventario), pulsa `Ctrl+C`. Deja las otras tres aplicaciones ejecutándose.
+2. En la quinta terminal, ejecuta:
+
+```powershell
+$failedOrder = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/v1/orders" -Headers $clientHeaders -ContentType 'application/json' -Body '{"product_id":1,"quantity":1}'
+$failedOrder | Format-List
+```
+
+3. Comprueba `status: ERROR_VALIDACION`; ese pedido permanece guardado.
+4. En la terminal 2 vuelve a ejecutar el comando de Inventario del paso 6.
+   El pedido anterior conserva su estado: no hay revalidación automática.
+
+Para inspeccionar el cuerpo de un error HTTP en Windows PowerShell, puedes usar:
+
+```powershell
+try {
+    Invoke-RestMethod "$baseUrl/api/v1/inventories" -Headers $clientHeaders -ErrorAction Stop
+} catch {
+    # En este ejemplo se espera HTTP 403 y code FORBIDDEN.
+    [int]$_.Exception.Response.StatusCode
+    $_.ErrorDetails.Message
+}
+```
+
 ## Contratos y Swagger UI
 
 | Aplicación | Swagger UI | Contrato | Salud local |
@@ -508,6 +574,62 @@ nulos, estados, cuerpos cerrados y esquemas de seguridad. Las diferencias entre
 autenticación externa e interna se documentan en sus respectivos contratos; los
 cuerpos y respuestas de negocio deben coincidir. Las pruebas detectan divergencias.
 Los recursos de documentación quedan fuera de la validación de negocio.
+
+## Generación desde OpenAPI: las cuatro aplicaciones
+
+Cada aplicación genera DTO de request/response, esquemas Marshmallow, interfaz
+abstracta y adaptadores `MethodView` desde su `contracts/openapi.yaml`. Health y
+los errores también utilizan DTO generados. Los modelos de negocio, repositorios,
+seguridad y lógica se implementan manualmente y consumen estas interfaces.
+
+Desde la raíz, después de instalar `requirements-codegen.txt`:
+
+```powershell
+# Generar las cuatro aplicaciones.
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py
+
+# Comprobar las cuatro sin modificar archivos.
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py --check
+
+# Generar o comprobar solo Pedidos.
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py --app orders
+.\.venv\Scripts\python.exe .\scripts\generate_apis.py --app orders --check
+```
+
+Los valores de `--app` son `auth`, `orders`, `inventories`, `gateway` y `all`.
+`scripts/generate_auth.py` se conserva como acceso directo a `--app auth`.
+
+El generador real es **OpenAPI Generator 7.27.0**, con plantillas compartidas en
+`codegen/templates/`. Cada app tiene su configuración en `codegen/config.yaml`.
+Se conservan Flask, `MethodView`, Marshmallow y `openapi-core`; no se añade Connexion.
+Los artefactos se incluyen en Git y no se editan a mano. La generación se realiza
+en un directorio temporal, comprueba sintaxis/formato y publica únicamente en
+`api/generated/` de la aplicación seleccionada.
+
+| Aplicación | Interfaz generada | Implementación manual |
+|---|---|---|
+| Auth | `AuthAPI` | `AuthAPIImpl` en `api/routes/auth.py` |
+| Pedidos | `OrdersAPI` | `OrdersAPIImpl` en `api/routes/order.py` |
+| Inventario | `InventoryAPI` | `InventoryAPIImpl` en `api/routes/inventory.py` |
+| Gateway | `GatewayAPI` | `GatewayAPIImpl` en `api/routes/proxy.py` |
+
+Las rutas generadas convierten UUID, enteros de URL, fechas y cuerpos en modelos
+tipados. Los campos JSON enteros siguen siendo estrictos y no aceptan booleanos.
+Las respuestas de lista y los campos nulos se serializan según el contrato.
+El gateway consume la interfaz generada y conserva los códigos, cuerpos y
+encabezados válidos de los servicios, con validación OpenAPI de la respuesta.
+
+Pedidos también genera `api/generated/clients/inventory/` desde la operación de
+descuento del **contrato del gateway**. Su cliente manual lo consume y decide el
+estado del pedido. La URL HTTP de descuento y los DTO del cliente ya no se duplican
+manualmente. Los secretos internos y timeouts se proporcionan al cliente al iniciarlo.
+
+Al cambiar un contrato, regenera todo, adapta las implementaciones afectadas,
+reinicia los procesos y ejecuta las pruebas. `--check` detecta artefactos modificados,
+faltantes, sobrantes o desactualizados, incluido el cliente generado de Pedidos.
+Las plantillas cubren las construcciones utilizadas en los contratos del ejercicio;
+una construcción no soportada detiene la generación antes de publicar esa app.
+Consulta la [guía de generación](codegen/README.md) y el [detalle de Auth](onb-msa-sp-auth/README.md).
 
 ## Operaciones, estados y errores
 
@@ -582,25 +704,42 @@ La idempotencia protege descuentos identificados, no repeticiones del POST de cr
 ```text
 api-gateway/
   contracts/openapi.yaml
+  codegen/config.yaml
+  api/generated/{models, interfaces}/
+  api/generated/{routes, runtime}.py
   api/{clients, routes}/
   api/{__init__, contract, errors, security}.py
   test/routes/
 onb-msa-sp-auth/
   contracts/openapi.yaml
-  api/{models, schema, routes, services, repositories}/
+  codegen/config.yaml
+  api/generated/{models, interfaces}/
+  api/generated/{routes, runtime}.py
+  api/generated/manifest.json
+  api/{models, routes, services, repositories}/
   api/{__init__, contract, errors, security, seed}.py
   test/routes/
 onb-msa-sp-orders/
   contracts/openapi.yaml
-  api/{models, schema, routes, services, repositories, clients}/
+  codegen/config.yaml
+  api/generated/{models, interfaces}/
+  api/generated/clients/inventory/
+  api/generated/{routes, runtime}.py
+  api/{models, routes, services, repositories, clients}/
   api/{__init__, contract, errors, security}.py
   test/routes/
 onb-msa-sp-inventories/
   contracts/openapi.yaml
-  api/{models, schema, routes, services, repositories}/
+  codegen/config.yaml
+  api/generated/{models, interfaces}/
+  api/generated/{routes, runtime}.py
+  api/{models, routes, services, repositories}/
   api/{__init__, contract, errors, security, seed}.py
   test/routes/
-scripts/{setup_local, verify}.py
+codegen/templates/
+codegen/README.md
+scripts/{setup_local, verify, generate_apis, generate_auth}.py
+requirements-codegen.txt
 test/{test_contracts, test_setup, test_system}.py
 .secrets/                         # local, generado y excluido de Git
 README.md
@@ -608,7 +747,8 @@ README.md
 
 La notación entre llaves abrevia nombres separados, no carpetas literales.
 Cada aplicación incluye `app.py`, `config.py`, `requirements.txt`, `.env.example`,
-`.gitignore` y pruebas de correspondencia de rutas. Los paquetes tienen `__init__.py`.
+`requirements-codegen.txt`, `.gitignore`, `api/generated/manifest.json` y pruebas
+de correspondencia de rutas y generación en `test/`. Los paquetes tienen `__init__.py`.
 Las carpetas con guiones son proyectos independientes: no se importan como paquetes
 ni comparten repositorios. La pequeña integración contractual se incluye en cada app.
 
@@ -627,7 +767,9 @@ arranquen automáticamente. Las claves se cargan al iniciar, no por cada solicit
 |---|---|
 | No existe `py` | Instala Python con el lanzador y abre una terminal nueva. |
 | No existe `.venv\Scripts\python.exe` | Entra en la raíz y crea el entorno del paso 2. |
-| `ModuleNotFoundError` | Usa el Python de `.venv` e instala los cuatro requirements. |
+| `ModuleNotFoundError` | Usa el Python de `.venv` e instala `requirements-codegen.txt` de la raíz. |
+| Falla la generación o faltan herramientas | Instala `requirements-codegen.txt` y comprueba `java -version`. |
+| `--check` indica código generado desactualizado | Ejecuta `scripts/generate_apis.py`; adapta la implementación si cambiaron las firmas. La sincronización se comprueba con ese comando y las pruebas, no automáticamente al arrancar Flask. |
 | Falta un archivo en `.secrets` | Ejecuta `scripts/setup_local.py` después de instalar dependencias. |
 | 401 en gateway | Inicia sesión, renueva un token vencido y revisa el encabezado Bearer. |
 | 403 con el cliente en Inventario | Es el permiso previsto; crea pedidos para solicitar descuentos indirectamente. |

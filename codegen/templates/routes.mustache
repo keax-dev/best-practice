@@ -1,0 +1,59 @@
+# Generado desde OpenAPI. No editar; ejecutar scripts/generate_apis.py.
+from flask import Blueprint, Flask, Response, request
+from flask.typing import ResponseReturnValue
+from marshmallow import ValidationError, fields, validate
+
+from api.contract import ContractView
+from api.generated.runtime import UTCDateTime
+from {{apiPackage}}.{{defaultController}} import {{apiInterfaceName}}
+{{#models}}
+{{#model}}
+from {{modelPackage}}.{{classFilename}} import {{classname}}Schema
+{{/model}}
+{{/models}}
+
+{{#apiInfo}}
+{{#apis}}
+{{#operations}}
+{{#operation}}
+class {{operationIdCamelCase}}View(ContractView):
+    def __init__(self, implementation: {{apiInterfaceName}}) -> None:
+        self.implementation = implementation
+
+    def {{vendorExtensions.x-python-method}}(self{{#pathParams}}, {{paramName}}: str{{/pathParams}}) -> ResponseReturnValue:
+{{#bodyParam}}
+        body = {{{dataType}}}Schema().load(request.get_json())
+{{/bodyParam}}
+{{#allParams}}
+{{^isBodyParam}}
+        {{paramName}} = {{{vendorExtensions.x-python-field}}}.deserialize({{{vendorExtensions.x-python-source}}})
+{{/isBodyParam}}
+{{/allParams}}
+        result = self.implementation.{{operationId}}({{#bodyParam}}body=body, {{/bodyParam}}{{#allParams}}{{^isBodyParam}}{{paramName}}={{paramName}}, {{/isBodyParam}}{{/allParams}})
+{{#isGateway}}
+        if isinstance(result, Response):
+            return result
+{{/isGateway}}
+        try:
+            payload = {{{vendorExtensions.x-python-response-schema}}}.dump(result)
+        except ValidationError as error:
+            raise RuntimeError("Invalid generated response serialization") from error
+        return payload, {{{vendorExtensions.x-python-status}}}
+
+{{/operation}}
+{{/operations}}
+{{/apis}}
+{{/apiInfo}}
+
+def register_routes(app: Flask, implementation: {{apiInterfaceName}}) -> None:
+    blueprint = Blueprint("api_generated", __name__)
+{{#apiInfo}}
+{{#apis}}
+{{#operations}}
+{{#operation}}
+    blueprint.add_url_rule("{{path}}".replace("{", "<").replace("}", ">"), view_func={{operationIdCamelCase}}View.as_view("{{operationId}}", implementation), methods=["{{httpMethod}}"])
+{{/operation}}
+{{/operations}}
+{{/apis}}
+{{/apiInfo}}
+    app.register_blueprint(blueprint)

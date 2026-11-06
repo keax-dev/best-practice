@@ -1,0 +1,31 @@
+# Generado desde OpenAPI. No editar; ejecutar scripts/generate_apis.py.
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
+
+from marshmallow import RAISE, Schema, fields, post_load, validate
+
+from api.generated.runtime import UTCDateTime
+
+{{#models}}
+{{#model}}
+@dataclass(frozen=True, kw_only=True)
+class {{classname}}:
+{{#vars}}
+    {{name}}: {{{vendorExtensions.x-python-type}}}
+{{/vars}}
+
+
+class {{classname}}Schema(Schema):
+    class Meta:
+        unknown = RAISE
+
+{{#vars}}
+    {{name}} = {{{vendorExtensions.x-python-field}}}
+{{/vars}}
+
+    @post_load
+    def make_model(self, data: dict, **kwargs) -> {{classname}}:
+        return {{classname}}(**data)
+{{/model}}
+{{/models}}

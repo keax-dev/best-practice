@@ -1,0 +1,21 @@
+# Generado desde OpenAPI. No editar; ejecutar scripts/generate_apis.py.
+from abc import ABC, abstractmethod
+from datetime import datetime
+from uuid import UUID
+
+from flask import Response
+{{#imports}}
+{{{import}}}
+{{/imports}}
+
+
+class {{apiInterfaceName}}(ABC):
+{{#operations}}
+{{#operation}}
+    @abstractmethod
+    def {{operationId}}(self{{#bodyParam}}, body: {{{dataType}}}{{/bodyParam}}{{#allParams}}{{^isBodyParam}}, {{paramName}}: {{{vendorExtensions.x-python-type}}}{{/isBodyParam}}{{/allParams}}) -> {{#isGateway}}Response | {{/isGateway}}{{{vendorExtensions.x-python-response-type}}}:
+        """Implementar la operación {{operationId}} del contrato."""
+        raise NotImplementedError
+
+{{/operation}}
+{{/operations}}

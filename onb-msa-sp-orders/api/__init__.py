@@ -4,8 +4,9 @@ from flask import Flask
 
 from api.clients.inventory import InventoryHTTPClient
 from api.contract import configure_contract
+from api.generated.routes import register_routes
 from api.repositories.order import OrderRepository
-from api.routes.order import blueprint
+from api.routes.order import OrdersAPIImpl
 from api.security import configure_security
 from api.services.order import OrderService
 
@@ -24,5 +25,9 @@ def create_app(settings: dict | None = None) -> Flask:
     app.extensions["order_repository"] = repository
     app.extensions["order_service"] = OrderService(repository, client)
     configure_contract(app)
-    app.register_blueprint(blueprint)
+    implementation = OrdersAPIImpl(
+        app.extensions["order_service"], app.config["SERVICE_NAME"]
+    )
+    app.extensions["orders_api"] = implementation
+    register_routes(app, implementation)
     return app

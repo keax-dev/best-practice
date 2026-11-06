@@ -1,7 +1,7 @@
 # Tema: comprobar usuarios, contraseñas y contenido verificable del JWT.
 import jwt
 import pytest
-from api.schema.auth import LoginSchema
+from api.generated.models.login_input import LoginInputSchema
 from api.seed import USERS
 from marshmallow import ValidationError
 from werkzeug.security import check_password_hash
@@ -60,7 +60,7 @@ def test_wrong_credentials(client, username, password):
 def test_invalid_input_and_schema(client, body):
     assert client.post("/api/v1/auth/login", json=body).status_code == 400
     with pytest.raises(ValidationError):
-        LoginSchema().load(body)
+        LoginInputSchema().load(body)
 
 
 def test_passwords_are_hashes():
@@ -80,7 +80,11 @@ def test_content_errors(client):
 
 
 def test_invalid_response_controlled(app, client, monkeypatch, caplog):
-    monkeypatch.setattr(app.extensions["auth_service"], "login", lambda **kwargs: {})
+    monkeypatch.setattr(
+        app.extensions["auth_service"],
+        "login",
+        lambda **kwargs: {"access_token": "", "token_type": "Bearer", "expires_in": 0},
+    )
     response = client.post(
         "/api/v1/auth/login", json={"username": "admin", "password": "Admin123!"}
     )

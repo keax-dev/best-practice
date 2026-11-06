@@ -4,7 +4,8 @@ from flask import Flask
 
 from api.clients.proxy import ProxyHTTPClient
 from api.contract import configure_contract
-from api.routes.proxy import blueprint
+from api.generated.routes import register_routes
+from api.routes.proxy import GatewayAPIImpl
 from api.security import configure_security
 
 
@@ -25,5 +26,9 @@ def create_app(settings: dict | None = None) -> Flask:
         app.config["AUTH_TIMEOUT"],
     )
     configure_contract(app)
-    app.register_blueprint(blueprint)
+    implementation = GatewayAPIImpl(
+        app.extensions["proxy_client"], app.config["SERVICE_NAME"]
+    )
+    app.extensions["gateway_api"] = implementation
+    register_routes(app, implementation)
     return app
