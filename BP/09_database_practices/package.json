@@ -1,0 +1,15 @@
+{
+  "name": "bp-postgresql-examples",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "node verify.mjs"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "0.5.16"
+  }
+}

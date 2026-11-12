@@ -1,0 +1,17 @@
+server:
+  address: 127.0.0.1
+  port: ${APP_PORT:5011}
+spring:
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+      fail-on-unknown-properties: true
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true

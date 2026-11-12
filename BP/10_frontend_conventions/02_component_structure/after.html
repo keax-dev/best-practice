@@ -1,0 +1,8 @@
+<section aria-labelledby="products-title">
+  <h2 id="products-title">Products</h2>
+  <ul class="products">
+    @for (product of products; track product.id) {
+      <li class="products__item">{{ product.name }}</li>
+    }
+  </ul>
+</section>

@@ -1,0 +1,650 @@
+[
+  {
+    "category": "01_python_standards",
+    "slug": "01_naming_and_style",
+    "title": "Nombres y estilo",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "01_python_standards",
+    "slug": "02_imports",
+    "title": "Importaciones claras",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "01_python_standards",
+    "slug": "03_strings",
+    "title": "Construcción de cadenas",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "01_python_standards",
+    "slug": "04_conditions_and_comparisons",
+    "title": "Condiciones y comparaciones",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "01_python_standards",
+    "slug": "05_functions_and_methods",
+    "title": "Funciones y métodos",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "02_error_handling",
+    "slug": "01_specific_exceptions",
+    "title": "Excepciones específicas",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "02_error_handling",
+    "slug": "02_small_try_blocks",
+    "title": "Bloques try pequeños",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "02_error_handling",
+    "slug": "03_exception_chaining",
+    "title": "Conservar la causa original",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "03_architecture",
+    "slug": "01_separation_of_responsibilities",
+    "title": "Separación de responsabilidades",
+    "technology": "Python; el mismo criterio se aplica a controladores y servicios de Spring Boot",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "03_architecture",
+    "slug": "02_dependency_injection",
+    "title": "Inyección de dependencias",
+    "technology": "Python; Spring Boot realiza la composición mediante beans e inyección por constructor",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "03_architecture",
+    "slug": "03_ports_and_adapters",
+    "title": "Puertos y adaptadores",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "04_configuration_and_security",
+    "slug": "01_external_configuration",
+    "title": "Configuración externa",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "04_configuration_and_security",
+    "slug": "02_configuration_naming",
+    "title": "Nombres de configuración",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "04_configuration_and_security",
+    "slug": "03_configuration_validation",
+    "title": "Validar la configuración",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "04_configuration_and_security",
+    "slug": "04_secrets_management",
+    "title": "Gestión de secretos",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "05_logging_and_observability",
+    "slug": "01_log_levels",
+    "title": "Niveles de log",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "05_logging_and_observability",
+    "slug": "02_structured_logging",
+    "title": "Logs estructurados",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "05_logging_and_observability",
+    "slug": "03_correlation_ids",
+    "title": "Identificadores de correlación",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "05_logging_and_observability",
+    "slug": "04_sensitive_data_masking",
+    "title": "Protección de datos en logs",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "05_logging_and_observability",
+    "slug": "05_dynamic_log_levels",
+    "title": "Cambiar niveles de log",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "06_resources_and_performance",
+    "slug": "01_context_managers",
+    "title": "Cerrar recursos con with",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "06_resources_and_performance",
+    "slug": "02_dependency_reuse",
+    "title": "Reutilizar dependencias",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "06_resources_and_performance",
+    "slug": "03_bounded_cache",
+    "title": "Caché con límites y expiración",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "06_resources_and_performance",
+    "slug": "04_efficient_data_access",
+    "title": "Evitar consultas repetidas",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "06_resources_and_performance",
+    "slug": "05_controlled_concurrency",
+    "title": "Concurrencia controlada",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "01_arrange_act_assert",
+    "title": "Preparar, ejecutar y verificar",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "02_test_isolation",
+    "title": "Aislamiento entre pruebas",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "03_mocks_and_stubs",
+    "title": "Mocks y stubs",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "04_parameterized_tests",
+    "title": "Pruebas parametrizadas",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "05_error_and_boundary_cases",
+    "title": "Errores y valores límite",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "06_integration_tests",
+    "title": "Pruebas de integración",
+    "technology": "Python",
+    "files": [
+      "example.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "07_contract_tests",
+    "title": "Pruebas de contrato",
+    "technology": "Python",
+    "files": [
+      "contract.json",
+      "example.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "08_code_coverage",
+    "title": "Cobertura de código",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "07_testing",
+    "slug": "09_mutation_testing",
+    "title": "Pruebas de mutación",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "01_liveness_and_readiness",
+    "title": "Liveness y readiness",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "02_timeouts",
+    "title": "Límites de espera",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "03_safe_retries",
+    "title": "Reintentos seguros",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "04_fallbacks",
+    "title": "Alternativas ante un fallo",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "05_circuit_breaker",
+    "title": "Circuit breaker",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "06_feature_flags",
+    "title": "Feature flags",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "08_resilience",
+    "slug": "07_backward_compatibility",
+    "title": "Compatibilidad hacia atrás",
+    "technology": "Python",
+    "files": [
+      "before.py",
+      "after.py"
+    ]
+  },
+  {
+    "category": "09_database_practices",
+    "slug": "01_object_naming",
+    "title": "Nombres de objetos de PostgreSQL",
+    "technology": "SQL de PostgreSQL",
+    "files": [
+      "before.sql",
+      "after.sql"
+    ]
+  },
+  {
+    "category": "09_database_practices",
+    "slug": "02_parameterized_queries",
+    "title": "Consultas parametrizadas",
+    "technology": "SQL de PostgreSQL",
+    "files": [
+      "before.sql",
+      "after.sql"
+    ]
+  },
+  {
+    "category": "09_database_practices",
+    "slug": "03_explicit_columns",
+    "title": "Columnas explícitas",
+    "technology": "SQL de PostgreSQL",
+    "files": [
+      "before.sql",
+      "after.sql"
+    ]
+  },
+  {
+    "category": "09_database_practices",
+    "slug": "04_joins_and_filters",
+    "title": "JOIN y filtros",
+    "technology": "SQL de PostgreSQL",
+    "files": [
+      "before.sql",
+      "after.sql"
+    ]
+  },
+  {
+    "category": "09_database_practices",
+    "slug": "05_constraints_and_normalization",
+    "title": "Restricciones y normalización",
+    "technology": "SQL de PostgreSQL",
+    "files": [
+      "before.sql",
+      "after.sql"
+    ]
+  },
+  {
+    "category": "09_database_practices",
+    "slug": "06_indexes_and_execution_plans",
+    "title": "Índices y planes de ejecución",
+    "technology": "SQL de PostgreSQL",
+    "files": [
+      "before.sql",
+      "after.sql"
+    ]
+  },
+  {
+    "category": "10_frontend_conventions",
+    "slug": "01_angular_naming",
+    "title": "Nombres en Angular",
+    "technology": "Angular y TypeScript",
+    "files": [
+      "before.ts",
+      "after.ts"
+    ]
+  },
+  {
+    "category": "10_frontend_conventions",
+    "slug": "02_component_structure",
+    "title": "Estructura de un componente Angular",
+    "technology": "Angular",
+    "files": [
+      "before.ts",
+      "after.ts",
+      "after.html",
+      "after.scss"
+    ]
+  },
+  {
+    "category": "10_frontend_conventions",
+    "slug": "03_services_and_injection",
+    "title": "Servicios e inyección en Angular",
+    "technology": "Angular",
+    "files": [
+      "before.ts",
+      "after.ts"
+    ]
+  },
+  {
+    "category": "10_frontend_conventions",
+    "slug": "04_guards_and_interceptors",
+    "title": "Guards e interceptores",
+    "technology": "Angular",
+    "files": [
+      "before.ts",
+      "after.ts"
+    ]
+  },
+  {
+    "category": "11_delivery_and_review",
+    "slug": "01_git_flow",
+    "title": "Git Flow",
+    "technology": "Git y proceso de entrega",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "11_delivery_and_review",
+    "slug": "02_pull_requests",
+    "title": "Pull Requests revisables",
+    "technology": "PR y documentación",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "11_delivery_and_review",
+    "slug": "03_peer_review",
+    "title": "Revisión por pares",
+    "technology": "Revisión técnica",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "11_delivery_and_review",
+    "slug": "04_quality_gates",
+    "title": "Controles automáticos de calidad",
+    "technology": "CI y métricas",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "11_delivery_and_review",
+    "slug": "05_traceability_and_evidence",
+    "title": "Trazabilidad y evidencia",
+    "technology": "Proceso y documentación",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "11_delivery_and_review",
+    "slug": "06_canary_releases",
+    "title": "Despliegue canary",
+    "technology": "Plataforma y estrategia de despliegue",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "12_ai_development",
+    "slug": "01_reuse_and_catalog",
+    "title": "Buscar antes de construir",
+    "technology": "Análisis y reutilización",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "12_ai_development",
+    "slug": "02_mcp_architecture",
+    "title": "Arquitectura de un servidor MCP",
+    "technology": "MCP y arquitectura",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "12_ai_development",
+    "slug": "03_skill_structure",
+    "title": "Estructura y evaluación de skills",
+    "technology": "Documentación para agentes",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "12_ai_development",
+    "slug": "04_agent_governance",
+    "title": "Gobierno de agentes",
+    "technology": "Gobierno y seguridad de IA",
+    "files": [
+      "before.md",
+      "after.md"
+    ]
+  },
+  {
+    "category": "03_architecture",
+    "slug": "04_flask_application_structure",
+    "title": "Aplicación Flask por responsabilidades",
+    "technology": "Python y Flask",
+    "files": [
+      "example.py",
+      "api/__init__.py",
+      "api/models.py",
+      "api/repository.py",
+      "api/service.py",
+      "api/routes.py",
+      "test_example.py"
+    ]
+  },
+  {
+    "category": "03_architecture",
+    "slug": "05_spring_boot_structure",
+    "title": "Aplicación Spring Boot por responsabilidades",
+    "technology": "Spring Boot 3.5.16 y Java 21",
+    "files": [
+      "pom.xml",
+      "src/main/java/demo/bp/ExampleApplication.java",
+      "src/main/java/demo/bp/domain/Order.java",
+      "src/main/java/demo/bp/application/OrderRepository.java",
+      "src/main/java/demo/bp/application/CapacityExceededException.java",
+      "src/main/java/demo/bp/application/OrderService.java",
+      "src/main/java/demo/bp/infrastructure/InMemoryOrderRepository.java",
+      "src/main/java/demo/bp/config/ServiceConfiguration.java",
+      "src/main/java/demo/bp/presentation/OrderInput.java",
+      "src/main/java/demo/bp/presentation/OrderController.java",
+      "src/main/java/demo/bp/presentation/ApiErrorHandler.java",
+      "src/main/resources/application.yml",
+      "src/test/java/demo/bp/application/OrderServiceTest.java",
+      "src/test/java/demo/bp/presentation/OrderHttpTest.java"
+    ]
+  }
+]
