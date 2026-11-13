@@ -16,6 +16,10 @@ en 12 bloques y adaptadas a Python, Spring Boot, Angular y PostgreSQL. Ese mater
 añade configuración, logging, pruebas, recursos, resiliencia y procesos de entrega.
 Su guía explica las dependencias y comandos específicos de cada tecnología.
 
+Como tema independiente, [Protocolos de comunicación](communication_protocols/README.md)
+reúne fichas teóricas breves sobre redes, transporte, seguridad, web y mensajería.
+Cada protocolo tiene su propia carpeta y un archivo `definition.md`.
+
 Los comentarios y la documentación están en español. Los identificadores, nombres
 de archivo y mensajes del programa están en inglés. Los ejemplos de SOLID y Clean
 Code utilizan solo la biblioteca estándar y están pensados para Python **3.14.7**.
